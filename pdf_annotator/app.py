@@ -10,6 +10,7 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 from gi.repository import Adw, Gdk, Gio, Gtk  # noqa: E402
 
+from .canvas import PageRenderer  # noqa: E402
 from .window import APP_NAME, Window, install_css  # noqa: E402
 
 APP_ID = "io.github.vince.PdfAnnotator"
@@ -50,6 +51,10 @@ class App(Adw.Application):
             a = Gio.SimpleAction.new(name, None)
             a.connect("activate", cb)
             self.add_action(a)
+
+    def do_shutdown(self):
+        PageRenderer.shutdown_all()
+        Adw.Application.do_shutdown(self)
 
     def do_activate(self):
         win = self.get_active_window() or Window(self)

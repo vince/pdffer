@@ -44,13 +44,31 @@ class PageRenderer:
     Only this thread touches the Poppler document after load.
     """
 
+    _running = set()  # renderers whose thread hasn't exited yet
+
     def __init__(self, poppler_doc, on_done):
         self._doc = poppler_doc
         self._on_done = on_done
         self._cond = threading.Condition()
         self._wanted = []
         self._alive = True
-        threading.Thread(target=self._run, daemon=True).start()
+        self._thread = threading.Thread(target=self._run, daemon=True,
+                                        name="page-renderer")
+        PageRenderer._running.add(self)
+        self._thread.start()
+
+    @classmethod
+    def shutdown_all(cls, timeout=10):
+        """Stop every renderer and wait for in-progress renders to finish.
+
+        Must run before the process exits: Poppler's global state is torn
+        down by exit handlers, and a render still running then crashes.
+        """
+        renderers = list(cls._running)
+        for r in renderers:
+            r.stop()
+        for r in renderers:
+            r._thread.join(timeout)
 
     def want(self, items):
         with self._cond:
@@ -65,6 +83,12 @@ class PageRenderer:
             self._cond.notify()
 
     def _run(self):
+        try:
+            self._loop()
+        finally:
+            PageRenderer._running.discard(self)
+
+    def _loop(self):
         while True:
             with self._cond:
                 while self._alive and not self._wanted:

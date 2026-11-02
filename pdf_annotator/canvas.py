@@ -181,6 +181,7 @@ class PageCanvas(Gtk.DrawingArea, Gtk.Scrollable):
         self._hidden.clear()
         self._live = self._moving = self._resizing = self._press = None
         self.selected = None
+        self._rects, self._tops = [], []  # don't anchor to the previous document
         if doc is not None:
             self._renderer = PageRenderer(doc.poppler, self._on_rendered)
             self.fit_width = True
@@ -222,7 +223,7 @@ class PageCanvas(Gtk.DrawingArea, Gtk.Scrollable):
             index = self.current_page()
             # centre of the visible part of the page
             p = self.doc.pages[index]
-            _, top, _ = self.widget_to_page(0, 0, index)
+            _, _, top = self.widget_to_page(0, 0, index)
             _, _, bottom = self.widget_to_page(0, self.get_height(), index)
             top, bottom = max(0, top), min(p.height, bottom)
             cx, cy = p.width / 2, (top + bottom) / 2 if bottom > top else p.height / 2

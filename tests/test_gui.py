@@ -175,6 +175,42 @@ class GuiTests(unittest.TestCase):
 
         run_app(steps)
 
+    def test_open_short_pdf_while_deep_in_a_long_one(self):
+        # regression: the previous document's page number was used to
+        # anchor the new layout (IndexError opening a shorter PDF)
+        book = make_pdf(os.path.join(self.dir, "book.pdf"), pages=30)
+
+        def steps(win):
+            yield from self.open(win, book)
+            win.canvas.scroll_to_page(25)
+            yield wait_for(lambda: page_rendered(win.canvas, 25), "page 26")
+            yield from self.open(win, self.pdf)
+            self.assertEqual(len(win.doc.pages), 3)
+            self.assertEqual(win.canvas.current_page(), 0)
+
+        run_app(steps)
+
+    def test_image_lands_in_view(self):
+        # regression: the visible area was computed from the wrong axis, so
+        # images went to the middle of the page even when scrolled past it
+        book = make_pdf(os.path.join(self.dir, "book.pdf"), pages=3)
+
+        def steps(win):
+            yield from self.open(win, book)
+            c = win.canvas
+            c.set_zoom(3.0)  # one page is several screens tall
+            _page, _x, top = c.widget_to_page(0, 0, 0)
+            c.vadjustment.set_value(c.vadjustment.get_value() + (560 - top) * c.zoom)
+            yield wait_for(lambda: page_rendered(c, 0), "zoomed render")
+            win._insert_image_bytes(png_bytes(40, 40))
+            m = c.selected
+            _page, _x, view_top = c.widget_to_page(0, 0, 0)
+            _page, _x, view_bottom = c.widget_to_page(0, c.get_height(), 0)
+            self.assertTrue(view_top <= m.y + m.h / 2 <= view_bottom,
+                            f"image at y={m.y:.0f}, view shows {view_top:.0f}-{view_bottom:.0f}")
+
+        run_app(steps)
+
     def test_thumbnails_jump_and_follow(self):
         book = make_pdf(os.path.join(self.dir, "book.pdf"), pages=30)
 

@@ -129,6 +129,9 @@ class ImageData:
             stream = Gio.MemoryInputStream.new_from_bytes(GLib.Bytes.new(self.data))
             pixbuf = GdkPixbuf.Pixbuf.new_from_stream(stream, None)
         except GLib.Error as e:
+            if "Loader process" in e.message:  # glycin's sandboxed decoder died
+                raise ImageError("The system's image decoder couldn't start, so images "
+                                 "can't be inserted right now.", technical(e)) from e
             raise ImageError("This file isn't an image PDF Annotator can read, or it's "
                              "damaged. PNG and JPEG images work best.", technical(e)) from e
         orientation = pixbuf.get_option("orientation")

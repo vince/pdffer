@@ -1,11 +1,30 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "pdf-annotator"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Sign and mark up PDFs with a stylus or keyboard on GNOME"
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Vince Wadhwani" }]
 requires-python = ">=3.12"
 # Runtime dependencies are system packages (GTK 4, libadwaita, Poppler,
 # PyGObject, pycairo, pikepdf); see README.md. Install with ./install.sh.
+
+[project.scripts]
+pdf-annotator = "pdf_annotator.app:main"
+
+[tool.setuptools]
+packages = ["pdf_annotator"]
+
+[tool.setuptools.package-data]
+pdf_annotator = ["icons/**/*.svg"]
+
+[tool.setuptools.dynamic]
+version = { attr = "pdf_annotator.__version__" }  # read statically, no GTK needed
 
 [tool.ruff]
 line-length = 100

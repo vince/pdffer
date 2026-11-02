@@ -118,3 +118,7 @@ redraw, hover and memory numbers to compare before and after a change.
 - `style_button.py`: color, pen width and text size popover
 - `errors.py`: plain-language error messages
 - `window.py`, `app.py`, `settings.py`: the window, application and preferences
+
+## License
+
+MIT; see [LICENSE](LICENSE).

@@ -8,14 +8,13 @@ import gi
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
-from gi.repository import Adw, Gdk, Gio, Gtk
+from gi.repository import Adw, Gdk, Gio, GLib, Gtk
 
-from . import settings
+from . import __version__, settings
 from .page_renderer import PageRenderer
 from .window import APP_NAME, Window, install_css
 
 APP_ID = "io.github.vince.PdfAnnotator"
-VERSION = "0.1.0"
 ICONS_DIR = os.path.join(os.path.dirname(__file__), "icons")
 
 ACCELS = {
@@ -40,6 +39,14 @@ class App(Adw.Application):
     def __init__(self):
         super().__init__(application_id=APP_ID,
                          flags=Gio.ApplicationFlags.HANDLES_OPEN)
+        self.add_main_option("version", ord("v"), GLib.OptionFlags.NONE,
+                             GLib.OptionArg.NONE, "Show the version and exit", None)
+
+    def do_handle_local_options(self, options):
+        if options.contains("version"):
+            print(f"{APP_NAME} {__version__}")
+            return 0  # exit without starting the app
+        return -1  # carry on
 
     def do_startup(self):
         Adw.Application.do_startup(self)
@@ -80,8 +87,10 @@ class App(Adw.Application):
 
     def _about(self, *_):
         about = Adw.AboutDialog(
-            application_name=APP_NAME, application_icon=APP_ID, version=VERSION,
-            comments="Sign and mark up PDFs with a stylus or keyboard.")
+            application_name=APP_NAME, application_icon=APP_ID, version=__version__,
+            comments="Sign and mark up PDFs with a stylus or keyboard.",
+            developer_name="Vince Wadhwani", copyright="© 2026 Vince Wadhwani",
+            license_type=Gtk.License.MIT_X11)
         about.present(self.get_active_window())
 
 

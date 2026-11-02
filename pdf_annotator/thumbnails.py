@@ -8,7 +8,7 @@ gi.require_version("Poppler", "0.18")
 from gi.repository import GLib, Gtk, Poppler  # noqa: E402
 
 from . import render  # noqa: E402
-from .canvas import PageRenderer  # noqa: E402
+from .page_renderer import PageRenderer  # noqa: E402
 
 THUMB_W = 116
 MAX_CACHED = 240

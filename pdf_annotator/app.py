@@ -11,7 +11,7 @@ gi.require_version("Adw", "1")
 from gi.repository import Adw, Gdk, Gio, Gtk  # noqa: E402
 
 from . import settings  # noqa: E402
-from .canvas import PageRenderer  # noqa: E402
+from .page_renderer import PageRenderer  # noqa: E402
 from .window import APP_NAME, Window, install_css  # noqa: E402
 
 APP_ID = "io.github.vince.PdfAnnotator"

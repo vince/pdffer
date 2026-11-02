@@ -255,7 +255,7 @@ class GuiTests(unittest.TestCase):
         run_app(steps)
 
     def test_failed_page_shows_placeholder(self):
-        import pdf_annotator.canvas as canvas_mod
+        import pdf_annotator.page_renderer as renderer_mod
 
         class BrokenFirstPage:
             def __init__(self, doc):
@@ -266,12 +266,12 @@ class GuiTests(unittest.TestCase):
                     raise RuntimeError("simulated render failure")
                 return self.doc.get_page(i)
 
-        original = canvas_mod.PageRenderer.__init__
+        original = renderer_mod.PageRenderer.__init__
 
         def patched(renderer, doc, on_done):
             original(renderer, BrokenFirstPage(doc), on_done)
-        canvas_mod.PageRenderer.__init__ = patched
-        self.addCleanup(setattr, canvas_mod.PageRenderer, "__init__", original)
+        renderer_mod.PageRenderer.__init__ = patched
+        self.addCleanup(setattr, renderer_mod.PageRenderer, "__init__", original)
 
         def steps(win):
             win.open_path(self.pdf)
@@ -302,7 +302,7 @@ class StylusHistoryTests(unittest.TestCase):
     """Stray-line regression: invalid coalesced stylus samples are dropped."""
 
     def test_history_validation(self):
-        from pdf_annotator.canvas import PageCanvas
+        from pdf_annotator.stylus import history_points as hp
 
         class TC:
             def __init__(self, x, y, flags):
@@ -333,12 +333,11 @@ class StylusHistoryTests(unittest.TestCase):
                 return self.ev
 
         flags = Gdk.AxisFlags.X | Gdk.AxisFlags.Y | Gdk.AxisFlags.PRESSURE
-        hp = PageCanvas._history_points
-        good = hp(None, G([TC(105, 145, flags)]), 110, 100, (100, 98))
+        good = hp(G([TC(105, 145, flags)]), 110, 100, (100, 98))
         self.assertEqual(good, [(105, 98, 0.6)])
-        self.assertEqual(hp(None, G([TC(0, 0, flags)]), 110, 100, (100, 98)), [],
+        self.assertEqual(hp(G([TC(0, 0, flags)]), 110, 100, (100, 98)), [],
                          "zeroed sample must be discarded")
-        self.assertEqual(hp(None, G([TC(105, 145, 0)]), 110, 100, (100, 98)), [],
+        self.assertEqual(hp(G([TC(105, 145, 0)]), 110, 100, (100, 98)), [],
                          "sample without X/Y must be discarded")
 
 

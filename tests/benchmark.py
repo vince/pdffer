@@ -76,21 +76,21 @@ def main():
 
         win.doc.marks.extend(marks(0))
         win.doc.version += 1
-        c._live = Stroke(0, [(100 + i, 100, 0.5) for i in range(50)], (0, 0, 0), 1.5)
+        c.live = Stroke(0, [(100 + i, 100, 0.5) for i in range(50)], (0, 0, 0), 1.5)
         render_canvas(c)  # warm the caches
         n = 30
         t = time.perf_counter()
         for i in range(n):
-            c._live.add_point(150 + i, 100, 0.5)
+            c.live.add_point(150 + i, 100, 0.5)
             render_canvas(c)
         print(f"redraw per pen movement (300 strokes + 40 texts): "
               f"{(time.perf_counter() - t) / n * 1000:.1f} ms")
-        c._live = None
+        c.live = None
 
         n = 200
         t = time.perf_counter()
         for _ in range(n):
-            c._mark_at((0, random.uniform(0, 600), random.uniform(0, 790)))
+            c.mark_at((0, random.uniform(0, 600), random.uniform(0, 790)))
         print(f"select-tool hover check: {(time.perf_counter() - t) / n * 1000:.2f} ms")
 
     run_app(steps)

@@ -77,6 +77,68 @@ def _quad_to(cr, p0, c, p2):
     )
 
 
+SHARP_TURN_COS = math.cos(math.radians(35))
+
+
+def _sharp_turns(pts):
+    """Indexes of interior points where the stroke turns sharply."""
+    out = []
+    for i in range(1, len(pts) - 1):
+        ux, uy = pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]
+        vx, vy = pts[i + 1][0] - pts[i][0], pts[i + 1][1] - pts[i][1]
+        lu, lv = math.hypot(ux, uy), math.hypot(vx, vy)
+        if lu and lv and (ux * vx + uy * vy) / (lu * lv) < SHARP_TURN_COS:
+            out.append(i)
+    return out
+
+
+def _outline_run(cr, run, width):
+    """Add the outline of a smooth run as a closed sub-path: left edge
+    forward, round end cap, right edge back, round start cap. It always
+    winds the same way, so runs (and loops within a run) union cleanly."""
+    n = len(run)
+    radius = [width * pressure_factor(p) / 2 for _x, _y, p in run]
+    left, right = [], []
+    for i, (x, y, _p) in enumerate(run):
+        ax, ay, _ = run[max(0, i - 1)]
+        bx, by, _ = run[min(n - 1, i + 1)]
+        dx, dy = bx - ax, by - ay
+        d = math.hypot(dx, dy) or 1.0
+        nx, ny = -dy / d * radius[i], dx / d * radius[i]
+        left.append((x + nx, y + ny))
+        right.append((x - nx, y - ny))
+    cr.new_sub_path()
+    cr.move_to(*left[0])
+    for q in left[1:]:
+        cr.line_to(*q)
+    x, y, _p = run[-1]
+    a = math.atan2(left[-1][1] - y, left[-1][0] - x)
+    cr.arc_negative(x, y, radius[-1], a, a - math.pi)
+    for q in reversed(right):
+        cr.line_to(*q)
+    x, y, _p = run[0]
+    a = math.atan2(right[0][1] - y, right[0][0] - x)
+    cr.arc_negative(x, y, radius[0], a, a - math.pi)
+    cr.close_path()
+
+
+def _fill_outline(cr, pts, width):
+    """Fill a variable-width stroke with a single fill.
+
+    The stroke is split at sharp turns into smooth runs; each run's round
+    end caps make the rounded corners. One fill is far cheaper to draw, and
+    to store in a PDF, than one stroke operation per segment.
+    """
+    cr.new_path()
+    start = 0
+    for corner in _sharp_turns(pts) + [len(pts) - 1]:
+        if corner > start:
+            _outline_run(cr, pts[start:corner + 1], width)
+            start = corner
+    cr.set_fill_rule(cairo.FILL_RULE_WINDING)
+    cr.fill()
+
+
 def draw_stroke(cr, points, color, width):
     """Draw a smoothed, optionally pressure-sensitive ink stroke.
 
@@ -113,22 +175,7 @@ def draw_stroke(cr, points, color, width):
             cr.line_to(points[-1][0], points[-1][1])
         cr.stroke()
     else:
-        # Variable width: stroke each smoothed piece with its own width;
-        # round caps hide the joins.
-        start = points[0]
-        for i in range(1, n):
-            if i < n - 1:
-                end = _mid(points[i], points[i + 1])
-                cr.set_line_width(width * pressure_factor(points[i][2]))
-                cr.move_to(start[0], start[1])
-                _quad_to(cr, start, points[i], end)
-            else:
-                end = points[-1]
-                cr.set_line_width(width * pressure_factor((start[2] + end[2]) / 2))
-                cr.move_to(start[0], start[1])
-                cr.line_to(end[0], end[1])
-            cr.stroke()
-            start = end
+        _fill_outline(cr, points, width)
     cr.restore()
 
 

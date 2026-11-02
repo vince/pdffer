@@ -206,6 +206,28 @@ class RoundTrip(unittest.TestCase):
         doc2.undo()
         self.assertEqual(round(m.w), 80)
 
+    def test_pressure_stroke_has_no_gaps(self):
+        """Variable-width strokes are filled outlines split at sharp turns;
+        corners and joins must be solid ink (no holes, no pinching)."""
+        from pdf_annotator import render
+        zig = [(10 + i * 4, 20 + (14 if (i // 5) % 2 else 0) +
+                (i % 5) * (2.8 if (i // 5) % 2 == 0 else -2.8), 0.2 + 0.8 * i / 40)
+               for i in range(41)]
+        surf = cairo.ImageSurface(cairo.FORMAT_RGB24, 800, 260)
+        cr = cairo.Context(surf)
+        cr.set_source_rgb(1, 1, 1)
+        cr.paint()
+        cr.scale(4, 4)
+        render.draw_stroke(cr, zig, (0, 0, 1), 4)
+        for i, (x, y, _p) in enumerate(zig):  # every sample point, incl. corners
+            r, g, b = pixel(surf, x * 4, y * 4)
+            self.assertTrue(b > 200 and r < 60, f"gap at point {i}: {(r, g, b)}")
+            if i:
+                mx, my = (x + zig[i - 1][0]) / 2, (y + zig[i - 1][1]) / 2
+                r, g, b = pixel(surf, mx * 4, my * 4)
+                self.assertTrue(b > 200 and r < 60, f"gap before point {i}")
+        self.assertEqual(pixel(surf, 4, 240), (255, 255, 255))
+
 
 def render_annots(data):
     pdf = pikepdf.open(io.BytesIO(data))

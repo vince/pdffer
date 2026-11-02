@@ -1,0 +1,33 @@
+name: Tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    # Same distribution and packages as the app targets.
+    container:
+      image: registry.fedoraproject.org/fedora:44
+      # Image decoding (glycin) runs each decode in a bubblewrap sandbox,
+      # which needs namespaces that a default container doesn't allow.
+      options: --privileged
+    steps:
+      - name: Install dependencies
+        run: >
+          dnf install -y --setopt=install_weak_deps=False
+          python3-gobject gtk4 libadwaita poppler-glib python3-cairo
+          python3-pikepdf python3-cryptography
+          poppler-utils nss-tools openssl
+          xorg-x11-server-Xvfb xorg-x11-xauth dbus-daemon google-noto-sans-fonts
+
+      - uses: actions/checkout@v4
+
+      - name: Run tests (GUI tests on a virtual X display)
+        env:
+          GDK_BACKEND: x11
+          GSK_RENDERER: cairo
+        run: >
+          dbus-run-session -- xvfb-run -a
+          python3 -W ignore::DeprecationWarning -m unittest discover -v tests

@@ -89,6 +89,18 @@ about stylus input).
 
     python3 -m unittest discover tests
 
+On a desktop this includes GUI tests that drive the real window (windows
+flash briefly; they use a separate app instance and a throwaway settings
+file, so a copy of the app you have open is unaffected). Without a
+display the GUI tests are skipped; to run them headless:
+
+    dbus-run-session -- xvfb-run -a env GDK_BACKEND=x11 GSK_RENDERER=cairo \
+        python3 -m unittest discover tests
+
+GitHub Actions runs everything on each push in a Fedora container
+(`.github/workflows/tests.yml`). `python3 tests/benchmark.py` prints
+redraw, hover and memory numbers to compare before and after a change.
+
 - `pdf_annotator/document.py`: loading, marks, undo/redo, PDF writing
 - `pdf_annotator/render.py`: cairo drawing shared by screen and PDF output
 - `pdf_annotator/canvas.py`: scrolling page view, threaded rendering, input

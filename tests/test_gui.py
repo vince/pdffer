@@ -109,6 +109,32 @@ class GuiTests(unittest.TestCase):
 
         run_app(steps)
 
+    def test_style_button(self):
+        from pdf_annotator.style_button import COLORS
+        red = dict((n, rgb) for n, rgb, _label in COLORS)["red"]
+
+        def steps(win):
+            yield from self.open(win)
+            c, btn = win.canvas, win.style_btn
+            win.tools.set_active_name("text")
+            click(c, 0, (100, 200))  # an open text box follows style changes
+            btn._swatches[red].set_active(True)
+            btn._width.set_value(3.0)
+            btn._size.set_value(20)
+            self.assertEqual(c.style.color, red)
+            self.assertEqual((c.style.width, c.style.text_size), (3.0, 20))
+            self.assertEqual((c.editor.color, c.editor.size), (red, 20))
+
+        saved = run_app(steps)
+        self.assertEqual((tuple(saved["color"]), saved["width"], saved["text_size"]),
+                         (red, 3.0, 20))
+
+        def restored(win):
+            yield 0
+            self.assertEqual(win.canvas.style.color, red)
+            self.assertTrue(win.style_btn._swatches[red].get_active())
+        run_app(restored, prefs=saved)
+
     # ------------------------------------------------------------ images
 
     def test_image_insert_move_resize_delete(self):

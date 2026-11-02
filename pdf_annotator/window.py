@@ -13,18 +13,11 @@ from gi.repository import Adw, Gdk, Gio, GLib, Graphene, Gtk  # noqa: E402
 from . import errors, settings  # noqa: E402
 from .canvas import PageCanvas  # noqa: E402
 from .document import Document, ImageError, LoadError, write_atomic  # noqa: E402
+from .style_button import StyleButton  # noqa: E402
+from .style_button import css as style_button_css  # noqa: E402
 from .thumbnails import ThumbnailPanel  # noqa: E402
 
 APP_NAME = "PDF Annotator"
-
-COLORS = [
-    ("black", (0.07, 0.07, 0.07), "Black"),
-    ("blue", (0.11, 0.31, 0.85), "Blue"),
-    ("red", (0.82, 0.11, 0.11), "Red"),
-    ("green", (0.12, 0.54, 0.23), "Green"),
-    ("purple", (0.48, 0.17, 0.75), "Purple"),
-    ("orange", (0.91, 0.35, 0.05), "Orange"),
-]
 
 TOOLS = [
     ("select", "pdfannot-select-symbolic", "Select, move and resize (S)"),
@@ -34,20 +27,8 @@ TOOLS = [
 ]
 
 
-def _hex(rgb):
-    return "#" + "".join(f"{round(c * 255):02x}" for c in rgb)
-
-
 def install_css():
-    css = """
-    .swatch { min-width: 26px; min-height: 26px; padding: 0; border-radius: 999px;
-              box-shadow: inset 0 0 0 1px alpha(black, 0.25); }
-    .swatch:checked { outline: 2px solid @accent_color; outline-offset: 2px; }
-    .page-osd { padding: 4px 12px; border-radius: 999px; }
-    """
-    for name, rgb, _label in COLORS:
-        css += f".swatch-{name}, .swatch-{name}:hover, .swatch-{name}:checked " \
-               f"{{ background: {_hex(rgb)}; }}\n"
+    css = ".page-osd { padding: 4px 12px; border-radius: 999px; }\n" + style_button_css()
     provider = Gtk.CssProvider()
     provider.load_from_string(css)
     Gtk.StyleContext.add_provider_for_display(
@@ -123,9 +104,8 @@ class Window(Adw.ApplicationWindow):
             self.tools.add(Adw.Toggle(name=name, icon_name=icon, tooltip=tip))
         self.tools.connect("notify::active-name", self._on_tool_toggled)
 
-        self.style_btn = Gtk.MenuButton(
-            child=self._build_color_dot(), popover=self._build_style_popover(),
-            tooltip_text="Color and Size")
+        self.style_btn = StyleButton(self.canvas.style)
+        self.style_btn.connect("changed", self._on_style_changed)
         title = Gtk.Box(spacing=6)
         title.append(self.tools)
         title.append(self.style_btn)
@@ -184,7 +164,7 @@ class Window(Adw.ApplicationWindow):
         st.color = tuple(self.prefs["color"])
         st.width = float(self.prefs["width"])
         st.text_size = float(self.prefs["text_size"])
-        self._sync_style_widgets()
+        self.style_btn.sync()
         self.tools.set_active_name(self.prefs.get("tool", "pen"))
         # The group starts with its first toggle active, so restoring that
         # tool emits no notify; sync the canvas explicitly.
@@ -525,91 +505,11 @@ class Window(Adw.ApplicationWindow):
         self.prefs["tool"] = tool
         settings.save(self.prefs)
 
-    def _build_color_dot(self):
-        dot = Gtk.DrawingArea(content_width=18, content_height=18,
-                              valign=Gtk.Align.CENTER)
-
-        def draw(_a, cr, w, h):
-            import math
-            cr.arc(w / 2, h / 2, min(w, h) / 2 - 1, 0, 2 * math.pi)
-            cr.set_source_rgb(*self.canvas.style.color)
-            cr.fill_preserve()
-            cr.set_source_rgba(0.5, 0.5, 0.5, 0.6)
-            cr.set_line_width(1)
-            cr.stroke()
-        dot.set_draw_func(draw)
-        self._color_dot = dot
-        return dot
-
-    def _build_style_popover(self):
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10,
-                      margin_top=6, margin_bottom=6, margin_start=6, margin_end=6)
-        row = Gtk.Box(spacing=8)
-        self._swatches = {}
-        group = None
-        for name, rgb, label in COLORS:
-            b = Gtk.ToggleButton(tooltip_text=label)
-            b.add_css_class("swatch")
-            b.add_css_class(f"swatch-{name}")
-            if group is None:
-                group = b
-            else:
-                b.set_group(group)
-            b.connect("toggled", self._on_swatch, rgb)
-            self._swatches[rgb] = b
-            row.append(b)
-        box.append(row)
-
-        box.append(Gtk.Label(label="Pen Width", xalign=0, css_classes=["caption-heading"]))
-        self.width_scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 0.5, 8, 0.25)
-        self.width_scale.set_digits(2)
-        self.width_scale.set_draw_value(True)
-        for v in (1, 2, 4):
-            self.width_scale.add_mark(v, Gtk.PositionType.BOTTOM, None)
-        self.width_scale.connect("value-changed", self._on_width)
-        box.append(self.width_scale)
-
-        size_row = Gtk.Box(spacing=12)
-        size_row.append(Gtk.Label(label="Text Size", xalign=0, hexpand=True,
-                                  css_classes=["caption-heading"]))
-        self.size_spin = Gtk.SpinButton.new_with_range(6, 72, 1)
-        self.size_spin.connect("value-changed", self._on_text_size)
-        size_row.append(self.size_spin)
-        box.append(size_row)
-        return Gtk.Popover(child=box)
-
-    def _sync_style_widgets(self):
+    def _on_style_changed(self, _button, what):
+        if what in ("color", "text_size"):
+            self.canvas.style_changed(what)  # restyles open text
         st = self.canvas.style
-        self._syncing = True
-        for rgb, b in self._swatches.items():
-            b.set_active(all(abs(a - c) < 0.01 for a, c in zip(rgb, st.color)))
-        self.width_scale.set_value(st.width)
-        self.size_spin.set_value(st.text_size)
-        self._syncing = False
-        self._color_dot.queue_draw()
-
-    def _on_swatch(self, btn, rgb):
-        if not btn.get_active() or getattr(self, "_syncing", False):
-            return
-        self.canvas.style.color = rgb
-        self.canvas.style_changed("color")
-        self._color_dot.queue_draw()
-        self.prefs["color"] = list(rgb)
-        settings.save(self.prefs)
-
-    def _on_width(self, scale):
-        if getattr(self, "_syncing", False):
-            return
-        self.canvas.style.width = scale.get_value()
-        self.prefs["width"] = scale.get_value()
-        settings.save(self.prefs)
-
-    def _on_text_size(self, spin):
-        if getattr(self, "_syncing", False):
-            return
-        self.canvas.style.text_size = spin.get_value()
-        self.canvas.style_changed("text_size")
-        self.prefs["text_size"] = spin.get_value()
+        self.prefs.update(color=list(st.color), width=st.width, text_size=st.text_size)
         settings.save(self.prefs)
 
     # ------------------------------------------------------------ view

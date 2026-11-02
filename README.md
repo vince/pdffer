@@ -101,9 +101,15 @@ GitHub Actions runs everything on each push in a Fedora container
 (`.github/workflows/tests.yml`). `python3 tests/benchmark.py` prints
 redraw, hover and memory numbers to compare before and after a change.
 
-- `pdf_annotator/document.py`: loading, marks, undo/redo, PDF writing
-- `pdf_annotator/render.py`: cairo drawing shared by screen and PDF output
-- `pdf_annotator/canvas.py`: scrolling page view, threaded rendering, input
-- `pdf_annotator/thumbnails.py`: page thumbnail sidebar
-- `pdf_annotator/errors.py`: plain-language error messages
-- `pdf_annotator/window.py`, `app.py`: GTK/libadwaita UI
+- `document.py`: loading, marks, undo/redo, PDF writing (incremental, encrypted)
+- `render.py`: cairo drawing shared by screen and PDF output
+- `canvas.py`: the scrolling page view; routes input to the active tool
+- `tools.py`: pen, text, eraser and select tools
+- `layout.py`: page layout geometry (pure Python, unit-tested)
+- `page_renderer.py`: background Poppler rendering thread
+- `text_editor.py`: the in-place text box
+- `stylus.py`: stylus pressure, eraser tip and coalesced samples
+- `thumbnails.py`: page thumbnail drawer
+- `style_button.py`: color, pen width and text size popover
+- `errors.py`: plain-language error messages
+- `window.py`, `app.py`, `settings.py`: the window, application and preferences

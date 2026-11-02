@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=PDF Annotator
+Comment=Sign and mark up PDFs with a stylus or keyboard
+Exec=pdf-annotator %F
+Icon=io.github.vince.PdfAnnotator
+Terminal=false
+Type=Application
+Categories=Office;Viewer;
+MimeType=application/pdf;
+Keywords=pdf;sign;signature;annotate;draw;ink;markup;
+StartupNotify=true

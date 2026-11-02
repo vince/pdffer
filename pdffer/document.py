@@ -34,6 +34,9 @@ from gi.repository import Gdk, GdkPixbuf, Gio, GLib, Poppler
 from . import render
 from .errors import UserError, name, read_error, technical
 
+# These keys keep the app's original name ("PDF Annotator") on purpose:
+# they are stored inside saved PDFs, and renaming them would make marks in
+# previously saved files uneditable.
 DATA_KEY = "/PdfAnnotatorData"
 IMAGE_KEY = "/PdfAnnotatorImage"
 FORMAT_VERSION = 1
@@ -132,7 +135,7 @@ class ImageData:
             if "Loader process" in e.message:  # glycin's sandboxed decoder died
                 raise ImageError("The system's image decoder couldn't start, so images "
                                  "can't be inserted right now.", technical(e)) from e
-            raise ImageError("This file isn't an image PDF Annotator can read, or it's "
+            raise ImageError("This file isn't an image PDFfer can read, or it's "
                              "damaged. PNG and JPEG images work best.", technical(e)) from e
         orientation = pixbuf.get_option("orientation")
         rotated = orientation not in (None, "1")
@@ -362,7 +365,7 @@ class Document:
         try:
             pdf = pikepdf.open(io.BytesIO(data))
         except pikepdf.PasswordError as e:
-            raise LoadError(f"{name(path)} is protected with a password. PDF Annotator "
+            raise LoadError(f"{name(path)} is protected with a password. PDFfer "
                             "can't open password-protected PDFs.", technical(e)) from e
         except Exception as e:
             if b"%PDF" not in data[:1024]:
@@ -638,7 +641,7 @@ def _make_annot(pdf, page, it, form, date):
         Type=pikepdf.Name.Annot,
         Rect=pikepdf.Array([x0, y0, x1, y1]),
         F=4,  # print
-        NM=pikepdf.String("pdfannot-" + uuid.uuid4().hex),
+        NM=pikepdf.String("pdffer-" + uuid.uuid4().hex),
         M=pikepdf.String(date),
         P=page.obj,
         AP=pikepdf.Dictionary(N=form),
@@ -691,7 +694,7 @@ def build_pdf(original, items, flatten=False):
                         page.contents_add(b"q\n", prepend=True)
                         page.contents_add(b"\nQ\n")
                         wrapped.add(it.page)
-                    name = page.add_resource(form, pikepdf.Name.XObject, prefix="PdfAnnot")
+                    name = page.add_resource(form, pikepdf.Name.XObject, prefix="Pdffer")
                     page.contents_add(
                         f"q 1 0 0 1 {x0:.4f} {y0:.4f} cm {name} Do Q\n".encode())
                     continue
@@ -990,7 +993,7 @@ def build_incremental(original, items):
 
 def write_atomic(path, data):
     directory = os.path.dirname(os.path.abspath(path))
-    fd, tmp = tempfile.mkstemp(dir=directory, prefix=".pdfannot-", suffix=".tmp")
+    fd, tmp = tempfile.mkstemp(dir=directory, prefix=".pdffer-", suffix=".tmp")
     try:
         with os.fdopen(fd, "wb") as fh:
             fh.write(data)

@@ -14,7 +14,7 @@ from . import __version__, settings
 from .page_renderer import PageRenderer
 from .window import APP_NAME, Window, install_css
 
-APP_ID = "io.github.vince.PdfAnnotator"
+APP_ID = "io.github.vince.PDFfer"
 ICONS_DIR = os.path.join(os.path.dirname(__file__), "icons")
 
 ACCELS = {
@@ -96,6 +96,6 @@ class App(Adw.Application):
 
 def main():
     logging.basicConfig(
-        format="pdf-annotator: %(levelname)s: %(message)s",
-        level=logging.DEBUG if os.environ.get("PDF_ANNOTATOR_DEBUG") else logging.WARNING)
+        format="pdffer: %(levelname)s: %(message)s",
+        level=logging.DEBUG if os.environ.get("PDFFER_DEBUG") else logging.WARNING)
     return App().run(sys.argv)

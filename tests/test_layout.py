@@ -6,7 +6,7 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from pdf_annotator.layout import GAP, MARGIN, PageLayout, fit_width_zoom
+from pdffer.layout import GAP, MARGIN, PageLayout, fit_width_zoom
 
 LETTER = (612, 792)
 LANDSCAPE = (792, 612)

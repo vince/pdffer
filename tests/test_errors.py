@@ -13,8 +13,8 @@ import pikepdf
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from pdf_annotator import errors
-from pdf_annotator.document import Document, ImageData, ImageError, LoadError, write_atomic
+from pdffer import errors
+from pdffer.document import Document, ImageData, ImageError, LoadError, write_atomic
 from test_roundtrip import make_pdf
 
 JARGON = ("Errno", "BytesIO", "trailer", "Poppler", "pikepdf", "0x", ".tmp", "stream")
@@ -79,7 +79,7 @@ class Messages(unittest.TestCase):
             errno.ENOENT: "no longer exists",
         }
         for code, text in cases.items():
-            err = errors.save_error(OSError(code, os.strerror(code), "/x/.pdfannot-1.tmp"),
+            err = errors.save_error(OSError(code, os.strerror(code), "/x/.pdffer-1.tmp"),
                                     target)
             self.assertIn(text, err.message)
             self.assertIn("hasn't been changed", err.message)

@@ -1,4 +1,7 @@
-# PDF Annotator
+# PDFfer
+
+<img src="pdffer/icons/hicolor/scalable/apps/io.github.vince.PDFfer.svg" width="96"
+     alt="PDFfer's mascot, a cartoon heifer, in front of a signed page" align="right">
 
 A small GNOME app for marking up PDFs with a stylus, mouse or keyboard:
 signing documents, scribbling notes, updating hit points on a character
@@ -16,7 +19,7 @@ Then:
     ./install.sh              # installs to ~/.local, adds a launcher
     ./install.sh --uninstall
 
-Or run straight from the checkout: `./pdf-annotator some.pdf`.
+Or run straight from the checkout: `./bin/pdffer some.pdf`.
 
 ## Using it
 
@@ -81,8 +84,8 @@ mid-save won't corrupt your PDF.
 
 Error messages explain the problem in plain language; the dialog's
 **Technical Details** section has the underlying cause. Running
-`pdf-annotator` from a terminal also logs warnings there, and
-`PDF_ANNOTATOR_DEBUG=1 pdf-annotator file.pdf` logs more detail (for example
+`pdffer` from a terminal also logs warnings there, and
+`PDFFER_DEBUG=1 pdffer file.pdf` logs more detail (for example
 about stylus input).
 
 ## Development

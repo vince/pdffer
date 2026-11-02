@@ -25,7 +25,7 @@ from harness import (
     run_app,
     wait_for,
 )
-from pdf_annotator.document import Document
+from pdffer.document import Document
 
 BLUE = (0.11, 0.31, 0.85)
 
@@ -38,7 +38,7 @@ def inky(rgb):
 @needs_display
 class GuiTests(unittest.TestCase):
     def setUp(self):
-        self.dir = tempfile.mkdtemp(prefix="pdfannot-gui-")
+        self.dir = tempfile.mkdtemp(prefix="pdffer-gui-")
         self.addCleanup(shutil.rmtree, self.dir, True)
         self.pdf = make_pdf(os.path.join(self.dir, "sheet.pdf"), pages=3)
 
@@ -112,7 +112,7 @@ class GuiTests(unittest.TestCase):
             win.tools.set_active_name("text")
             click(c, 0, (100, 200))
             c.editor.tv.get_buffer().set_text("Hit points: 23 of 41")
-            from pdf_annotator import render
+            from pdffer import render
             text_w, _h = render.text_extent("Hit points: 23 of 41", c.editor.size)
             width, _height = c.editor.tv.get_size_request()
             self.assertGreaterEqual(width, text_w * c.zoom, "editor would clip the text")
@@ -120,7 +120,7 @@ class GuiTests(unittest.TestCase):
         run_app(steps)
 
     def test_style_button(self):
-        from pdf_annotator.style_button import COLORS
+        from pdffer.style_button import COLORS
         red = dict((n, rgb) for n, rgb, _label in COLORS)["red"]
 
         def steps(win):
@@ -301,7 +301,7 @@ class GuiTests(unittest.TestCase):
         run_app(steps)
 
     def test_failed_page_shows_placeholder(self):
-        import pdf_annotator.page_renderer as renderer_mod
+        import pdffer.page_renderer as renderer_mod
 
         class BrokenFirstPage:
             def __init__(self, doc):
@@ -348,7 +348,7 @@ class StylusHistoryTests(unittest.TestCase):
     """Stray-line regression: invalid coalesced stylus samples are dropped."""
 
     def test_history_validation(self):
-        from pdf_annotator.stylus import history_points as hp
+        from pdffer.stylus import history_points as hp
 
         class TC:
             def __init__(self, x, y, flags):

@@ -1,11 +1,13 @@
-"""Tiny JSON settings store (~/.config/pdf-annotator/settings.json)."""
+"""Tiny JSON settings store (~/.config/pdffer/settings.json)."""
 
 import json
 import os
 
 from gi.repository import GLib
 
-_PATH = os.path.join(GLib.get_user_config_dir(), "pdf-annotator", "settings.json")
+_PATH = os.path.join(GLib.get_user_config_dir(), "pdffer", "settings.json")
+# Where settings lived when the app was called "PDF Annotator".
+_LEGACY_PATH = os.path.join(GLib.get_user_config_dir(), "pdf-annotator", "settings.json")
 
 DEFAULTS = {
     "tool": "pen",
@@ -44,8 +46,11 @@ def load():
     """Saved preferences, with defaults for anything missing or invalid (a
     damaged or hand-edited file must never stop the app from starting)."""
     data = dict(DEFAULTS)
+    path = _PATH
+    if not os.path.exists(path) and _LEGACY_PATH and os.path.exists(_LEGACY_PATH):
+        path = _LEGACY_PATH  # first run after the rename; saved to the new place
     try:
-        with open(_PATH) as fh:
+        with open(path) as fh:
             stored = json.load(fh)
     except (OSError, ValueError):
         return data

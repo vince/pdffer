@@ -2,7 +2,7 @@
 simulate pointer input.
 
 Each run uses a fresh, non-unique application instance (so it never talks
-to a copy of PDF Annotator you have open) and a throwaway settings file.
+to a copy of PDFfer you have open) and a throwaway settings file.
 """
 
 import io
@@ -75,12 +75,13 @@ def run_app(steps, prefs=None):
     Any exception it raises (including failed assertions) is re-raised
     here. Returns the settings dict as saved at shutdown.
     """
-    from pdf_annotator import settings
-    from pdf_annotator.app import App
-    from pdf_annotator.window import Window
+    from pdffer import settings
+    from pdffer.app import App
+    from pdffer.window import Window
 
-    cfg = tempfile.mkdtemp(prefix="pdfannot-test-")
+    cfg = tempfile.mkdtemp(prefix="pdffer-test-")
     settings._PATH = os.path.join(cfg, "settings.json")
+    settings._LEGACY_PATH = None  # never read the real pre-rename settings
     settings._pending = None
     if prefs:
         with open(settings._PATH, "w") as fh:

@@ -12,7 +12,7 @@ import re
 
 from gi.repository import Gio, GLib
 
-log = logging.getLogger("pdf_annotator")
+log = logging.getLogger("pdffer")
 
 
 class UserError(Exception):

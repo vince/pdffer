@@ -17,13 +17,13 @@ from .style_button import StyleButton
 from .style_button import css as style_button_css
 from .thumbnails import ThumbnailPanel
 
-APP_NAME = "PDF Annotator"
+APP_NAME = "PDFfer"
 
 TOOLS = [
-    ("select", "pdfannot-select-symbolic", "Select, move and resize (S)"),
-    ("pen", "pdfannot-pen-symbolic", "Pen (P)"),
-    ("text", "pdfannot-text-symbolic", "Text (T)"),
-    ("eraser", "pdfannot-eraser-symbolic", "Eraser (E)"),
+    ("select", "pdffer-select-symbolic", "Select, move and resize (S)"),
+    ("pen", "pdffer-pen-symbolic", "Pen (P)"),
+    ("text", "pdffer-text-symbolic", "Text (T)"),
+    ("eraser", "pdffer-eraser-symbolic", "Eraser (E)"),
 ]
 
 
@@ -74,7 +74,7 @@ class Window(Adw.ApplicationWindow):
         open_btn.add_css_class("pill")
         open_btn.add_css_class("suggested-action")
         empty = Adw.StatusPage(
-            icon_name="io.github.vince.PdfAnnotator", title="Open a PDF",
+            icon_name="io.github.vince.PDFfer", title="Open a PDF",
             description="Drop a PDF here or press Ctrl+O", child=open_btn)
 
         self.stack = Gtk.Stack()
@@ -130,7 +130,7 @@ class Window(Adw.ApplicationWindow):
         sec.append("Fullscreen", "win.fullscreen")
         menu.append_section(None, sec)
         sec = Gio.Menu()
-        sec.append("About PDF Annotator", "app.about")
+        sec.append("About PDFfer", "app.about")
         menu.append_section(None, sec)
         header.pack_end(Gtk.MenuButton(icon_name="open-menu-symbolic", menu_model=menu,
                                        primary=True, tooltip_text="Main Menu"))

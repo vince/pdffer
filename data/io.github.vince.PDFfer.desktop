@@ -1,8 +1,8 @@
 [Desktop Entry]
-Name=PDF Annotator
+Name=PDFfer
 Comment=Sign and mark up PDFs with a stylus or keyboard
-Exec=pdf-annotator %F
-Icon=io.github.vince.PdfAnnotator
+Exec=pdffer %F
+Icon=io.github.vince.PDFfer
 Terminal=false
 Type=Application
 Categories=Office;Viewer;

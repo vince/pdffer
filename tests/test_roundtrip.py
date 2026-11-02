@@ -13,7 +13,7 @@ import pikepdf
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from pdf_annotator.document import (
+from pdffer.document import (
     Document,
     GLib,
     ImageData,
@@ -216,7 +216,7 @@ class RoundTrip(unittest.TestCase):
     def test_pressure_stroke_has_no_gaps(self):
         """Variable-width strokes are filled outlines split at sharp turns;
         corners and joins must be solid ink (no holes, no pinching)."""
-        from pdf_annotator import render
+        from pdffer import render
         zig = [(10 + i * 4, 20 + (14 if (i // 5) % 2 else 0) +
                 (i % 5) * (2.8 if (i // 5) % 2 == 0 else -2.8), 0.2 + 0.8 * i / 40)
                for i in range(41)]

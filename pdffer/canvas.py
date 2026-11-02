@@ -37,7 +37,7 @@ class Style:
 
 
 class PageCanvas(Gtk.DrawingArea, Gtk.Scrollable):
-    __gtype_name__ = "PdfAnnotPageCanvas"
+    __gtype_name__ = "PdfferPageCanvas"
 
     hadjustment = GObject.Property(type=Gtk.Adjustment)
     vadjustment = GObject.Property(type=Gtk.Adjustment)
@@ -174,9 +174,9 @@ class PageCanvas(Gtk.DrawingArea, Gtk.Scrollable):
 
     def _on_adj_set(self, *_):
         for adj in (self.hadjustment, self.vadjustment):
-            if adj is not None and not getattr(adj, "_pdfannot_hooked", False):
+            if adj is not None and not getattr(adj, "_pdffer_hooked", False):
                 adj.connect("value-changed", self._on_scrolled)
-                adj._pdfannot_hooked = True
+                adj._pdffer_hooked = True
         self._relayout()
 
     def _on_scrolled(self, *_):

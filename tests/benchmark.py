@@ -22,7 +22,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import cairo
 
 from harness import page_rendered, render_canvas, run_app, wait_for
-from pdf_annotator.document import Stroke, TextMark
+from pdffer.document import Stroke, TextMark
 
 
 def heavy_pdf(path, pages=120):
@@ -60,7 +60,7 @@ def rss_mb():
 
 
 def main():
-    path = os.path.join(tempfile.mkdtemp(prefix="pdfannot-bench-"), "heavy.pdf")
+    path = os.path.join(tempfile.mkdtemp(prefix="pdffer-bench-"), "heavy.pdf")
     print("generating test PDF…", flush=True)
     heavy_pdf(path)
     size_mb = os.path.getsize(path) / 2 ** 20

@@ -3,7 +3,7 @@ requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "pdf-annotator"
+name = "pdffer"
 dynamic = ["version"]
 description = "Sign and mark up PDFs with a stylus or keyboard on GNOME"
 readme = "README.md"
@@ -15,16 +15,16 @@ requires-python = ">=3.12"
 # PyGObject, pycairo, pikepdf); see README.md. Install with ./install.sh.
 
 [project.scripts]
-pdf-annotator = "pdf_annotator.app:main"
+pdffer = "pdffer.app:main"
 
 [tool.setuptools]
-packages = ["pdf_annotator"]
+packages = ["pdffer"]
 
 [tool.setuptools.package-data]
-pdf_annotator = ["icons/**/*.svg"]
+pdffer = ["icons/**/*.svg"]
 
 [tool.setuptools.dynamic]
-version = { attr = "pdf_annotator.__version__" }  # read statically, no GTK needed
+version = { attr = "pdffer.__version__" }  # read statically, no GTK needed
 
 [tool.ruff]
 line-length = 100
@@ -46,4 +46,4 @@ ignore = [
 ]
 
 [tool.ruff.lint.isort]
-known-first-party = ["pdf_annotator", "harness", "test_roundtrip"]
+known-first-party = ["pdffer", "harness", "test_roundtrip"]

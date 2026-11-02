@@ -5,10 +5,10 @@ import gi
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Poppler", "0.18")
-from gi.repository import GLib, Gtk, Poppler  # noqa: E402
+from gi.repository import GLib, Gtk, Poppler
 
-from . import render  # noqa: E402
-from .page_renderer import PageRenderer  # noqa: E402
+from . import render
+from .page_renderer import PageRenderer
 
 THUMB_W = 116
 MAX_CACHED = 240

@@ -19,10 +19,10 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-import cairo  # noqa: E402
-from harness import page_rendered, render_canvas, run_app, wait_for  # noqa: E402
+import cairo
 
-from pdf_annotator.document import Stroke, TextMark  # noqa: E402
+from harness import page_rendered, render_canvas, run_app, wait_for
+from pdf_annotator.document import Stroke, TextMark
 
 
 def heavy_pdf(path, pages=120):

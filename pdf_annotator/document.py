@@ -12,15 +12,15 @@ import datetime
 import decimal
 import hashlib
 import io
+import itertools
 import json
 import math
 import os
 import re
+import sys
 import tempfile
 import uuid
 from dataclasses import dataclass, field
-
-import sys
 
 import cairo
 import gi
@@ -29,10 +29,10 @@ import pikepdf
 gi.require_version("Poppler", "0.18")
 gi.require_version("Gdk", "4.0")
 gi.require_version("GdkPixbuf", "2.0")
-from gi.repository import Gdk, GdkPixbuf, Gio, GLib, Poppler  # noqa: E402
+from gi.repository import Gdk, GdkPixbuf, Gio, GLib, Poppler
 
-from . import render  # noqa: E402
-from .errors import UserError, name, read_error, technical  # noqa: E402
+from . import render
+from .errors import UserError, name, read_error, technical
 
 DATA_KEY = "/PdfAnnotatorData"
 IMAGE_KEY = "/PdfAnnotatorImage"
@@ -83,7 +83,7 @@ class Stroke(_BBoxCache):
         pts = self.points
         if len(pts) == 1:
             return math.hypot(x - pts[0][0], y - pts[0][1]) <= r + self.width
-        for a, b in zip(pts, pts[1:]):
+        for a, b in itertools.pairwise(pts):
             tol = r + self.width * render.pressure_factor(max(a[2], b[2])) / 2
             if _seg_dist(x, y, a[0], a[1], b[0], b[1]) <= tol:
                 return True
@@ -552,7 +552,9 @@ def _mark_from_json(text, page_index, info, annot=None):
 
 
 def _mark_to_json(mark, info):
-    r = lambda v: round(v, 2)  # noqa: E731
+    def r(v):
+        return round(v, 2)
+
     if mark.kind == "image":
         ux, uy = info.to_user(mark.x, mark.y)
         return json.dumps({"v": FORMAT_VERSION, "type": "image", "x": r(ux), "y": r(uy),

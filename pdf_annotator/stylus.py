@@ -3,10 +3,10 @@
 import gi
 
 gi.require_version("Gdk", "4.0")
-from gi.repository import Gdk  # noqa: E402
+from gi.repository import Gdk
 
-from . import render  # noqa: E402
-from .errors import log  # noqa: E402
+from . import render
+from .errors import log
 
 
 def event_info(gesture):

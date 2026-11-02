@@ -13,9 +13,16 @@ import pikepdf
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from pdf_annotator.document import GLib, Poppler  # noqa: E402
-from pdf_annotator.document import (  # noqa: E402
-    Document, ImageData, ImageMark, Stroke, TextMark, write_atomic)
+from pdf_annotator.document import (
+    Document,
+    GLib,
+    ImageData,
+    ImageMark,
+    Poppler,
+    Stroke,
+    TextMark,
+    write_atomic,
+)
 
 RED = (1.0, 0.0, 0.0)
 BLUE = (0.0, 0.0, 1.0)

@@ -8,14 +8,14 @@ import gi
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 gi.require_version("Graphene", "1.0")
-from gi.repository import Adw, Gdk, Gio, GLib, Graphene, Gtk  # noqa: E402
+from gi.repository import Adw, Gdk, Gio, GLib, Graphene, Gtk
 
-from . import errors, settings  # noqa: E402
-from .canvas import PageCanvas  # noqa: E402
-from .document import Document, ImageError, LoadError, write_atomic  # noqa: E402
-from .style_button import StyleButton  # noqa: E402
-from .style_button import css as style_button_css  # noqa: E402
-from .thumbnails import ThumbnailPanel  # noqa: E402
+from . import errors, settings
+from .canvas import PageCanvas
+from .document import Document, ImageError, LoadError, write_atomic
+from .style_button import StyleButton
+from .style_button import css as style_button_css
+from .thumbnails import ThumbnailPanel
 
 APP_NAME = "PDF Annotator"
 

@@ -13,10 +13,9 @@ import pikepdf
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from pdf_annotator import errors  # noqa: E402
-from pdf_annotator.document import (  # noqa: E402
-    Document, ImageData, ImageError, LoadError, write_atomic)
-from test_roundtrip import make_pdf  # noqa: E402
+from pdf_annotator import errors
+from pdf_annotator.document import Document, ImageData, ImageError, LoadError, write_atomic
+from test_roundtrip import make_pdf
 
 JARGON = ("Errno", "BytesIO", "trailer", "Poppler", "pikepdf", "0x", ".tmp", "stream")
 

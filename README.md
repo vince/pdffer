@@ -97,7 +97,12 @@ display the GUI tests are skipped; to run them headless:
     dbus-run-session -- xvfb-run -a env GDK_BACKEND=x11 GSK_RENDERER=cairo \
         python3 -m unittest discover tests
 
-GitHub Actions runs everything on each push in a Fedora container
+Lint with [ruff](https://docs.astral.sh/ruff/) (configured in
+`pyproject.toml`; CI pins the version):
+
+    pipx run ruff==0.17.3 check .
+
+GitHub Actions runs the linter and all tests on each push in a Fedora container
 (`.github/workflows/tests.yml`). `python3 tests/benchmark.py` prints
 redraw, hover and memory numbers to compare before and after a change.
 

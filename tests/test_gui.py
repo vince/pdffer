@@ -9,13 +9,23 @@ import shutil
 import tempfile
 import unittest
 
-from harness import (  # noqa: E402  (harness sets up sys.path and GTK)
-    FakeGesture, canvas_pixel, click, drag, drag_widget, find_widget, make_pdf,
-    needs_display, page_rendered, png_bytes, render_canvas, run_app, wait_for)
+from gi.repository import Gdk, Gtk
 
-from gi.repository import Gdk, Gtk  # noqa: E402
-
-from pdf_annotator.document import Document  # noqa: E402
+from harness import (
+    FakeGesture,
+    canvas_pixel,
+    click,
+    drag,
+    find_widget,
+    make_pdf,
+    needs_display,
+    page_rendered,
+    png_bytes,
+    render_canvas,
+    run_app,
+    wait_for,
+)
+from pdf_annotator.document import Document
 
 BLUE = (0.11, 0.31, 0.85)
 

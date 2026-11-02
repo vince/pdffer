@@ -1,0 +1,30 @@
+[project]
+name = "pdf-annotator"
+version = "0.1.0"
+description = "Sign and mark up PDFs with a stylus or keyboard on GNOME"
+readme = "README.md"
+requires-python = ">=3.12"
+# Runtime dependencies are system packages (GTK 4, libadwaita, Poppler,
+# PyGObject, pycairo, pikepdf); see README.md. Install with ./install.sh.
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = [
+    "E", "W",  # pycodestyle
+    "F",       # pyflakes: unused names, undefined names, ...
+    "I",       # import sorting
+    "B",       # bugbear: likely bugs
+    "UP",      # pyupgrade: modern syntax
+    "RUF100",  # unused noqa comments
+]
+ignore = [
+    # PyGObject requires gi.require_version() before importing from
+    # gi.repository, so module-level imports can't all come first.
+    "E402",
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["pdf_annotator", "harness", "test_roundtrip"]

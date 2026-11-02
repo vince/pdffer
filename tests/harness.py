@@ -19,10 +19,10 @@ import cairo
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-import gi  # noqa: E402
+import gi
 
 gi.require_version("Gtk", "4.0")
-from gi.repository import Gio, GLib, Gtk  # noqa: E402
+from gi.repository import Gio, GLib
 
 HAS_DISPLAY = bool(os.environ.get("WAYLAND_DISPLAY") or os.environ.get("DISPLAY"))
 needs_display = unittest.skipUnless(HAS_DISPLAY, "needs a display (use xvfb-run in CI)")
@@ -187,16 +187,6 @@ def drag(canvas, page, start, end, steps=12):
 
 def click(canvas, page, point):
     drag(canvas, page, point, point, steps=1)
-
-
-def drag_widget(canvas, start, end, steps=12):
-    """Drag in widget coordinates."""
-    g = FakeGesture()
-    canvas._on_drag_begin(g, *start)
-    for k in range(1, steps + 1):
-        canvas._on_drag_update(g, (end[0] - start[0]) * k / steps,
-                               (end[1] - start[1]) * k / steps)
-    canvas._on_drag_end(g, end[0] - start[0], end[1] - start[1])
 
 
 # ---------------------------------------------------------------- output

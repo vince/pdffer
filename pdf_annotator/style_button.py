@@ -6,7 +6,7 @@ import math
 import gi
 
 gi.require_version("Gtk", "4.0")
-from gi.repository import GObject, Gtk  # noqa: E402
+from gi.repository import GObject, Gtk
 
 COLORS = [
     ("black", (0.07, 0.07, 0.07), "Black"),
@@ -91,7 +91,7 @@ class StyleButton(Gtk.MenuButton):
         st = self.style
         self._syncing = True
         for rgb, b in self._swatches.items():
-            b.set_active(all(abs(a - c) < 0.01 for a, c in zip(rgb, st.color)))
+            b.set_active(all(abs(a - c) < 0.01 for a, c in zip(rgb, st.color, strict=True)))
         self._width.set_value(st.width)
         self._size.set_value(st.text_size)
         self._syncing = False

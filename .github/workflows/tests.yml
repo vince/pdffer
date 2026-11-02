@@ -5,6 +5,13 @@ on:
   pull_request:
 
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Pinned so CI and local runs agree; bump deliberately.
+      - run: pipx run ruff==0.17.3 check .
+
   test:
     runs-on: ubuntu-latest
     # Same distribution and packages as the app targets.

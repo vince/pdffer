@@ -12,7 +12,7 @@ import gi
 
 gi.require_version("Pango", "1.0")
 gi.require_version("PangoCairo", "1.0")
-from gi.repository import Pango, PangoCairo  # noqa: E402
+from gi.repository import Pango, PangoCairo
 
 FONT_FAMILY = "Sans"
 DEFAULT_PRESSURE = 0.5

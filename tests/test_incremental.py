@@ -15,9 +15,8 @@ import pikepdf
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from pdf_annotator.document import (  # noqa: E402
-    Document, ImageData, ImageMark, Stroke, TextMark, write_atomic)
-from test_roundtrip import make_pdf, pixel, render_page  # noqa: E402
+from pdf_annotator.document import Document, ImageData, ImageMark, Stroke, TextMark, write_atomic
+from test_roundtrip import make_pdf, pixel, render_page
 
 RED = (1.0, 0.0, 0.0)
 

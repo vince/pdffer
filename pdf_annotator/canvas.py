@@ -15,14 +15,14 @@ import gi
 gi.require_version("Gtk", "4.0")
 gi.require_version("Gdk", "4.0")
 gi.require_version("Adw", "1")
-from gi.repository import Adw, Gdk, GObject, Gtk  # noqa: E402
+from gi.repository import Adw, Gdk, GObject, Gtk
 
-from . import render, stylus  # noqa: E402
-from .document import ImageData, ImageMark, TextMark  # noqa: E402
-from .layout import MARGIN, PageLayout, fit_width_zoom  # noqa: E402
-from .page_renderer import PageRenderer  # noqa: E402
-from .text_editor import TextEditor  # noqa: E402
-from .tools import MIN_IMAGE_PT, TOOLS  # noqa: E402
+from . import render, stylus
+from .document import ImageData, ImageMark, TextMark
+from .layout import MARGIN, PageLayout, fit_width_zoom
+from .page_renderer import PageRenderer
+from .text_editor import TextEditor
+from .tools import MIN_IMAGE_PT, TOOLS
 
 MIN_ZOOM, MAX_ZOOM = 0.1, 6.0
 MAX_RENDER_PIXELS = 16_000_000  # cap per page bitmap; beyond it, upscale

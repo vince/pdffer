@@ -5,9 +5,9 @@ import gi
 gi.require_version("Gtk", "4.0")
 gi.require_version("Gdk", "4.0")
 gi.require_version("Graphene", "1.0")
-from gi.repository import Gdk, Graphene, Gtk  # noqa: E402
+from gi.repository import Gdk, Graphene, Gtk
 
-from . import render  # noqa: E402
+from . import render
 
 
 class TextEditor:

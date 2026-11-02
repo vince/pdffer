@@ -2,7 +2,6 @@
 
 import bisect
 import math
-import os
 import threading
 import time
 from dataclasses import dataclass
@@ -17,6 +16,7 @@ gi.require_version("Graphene", "1.0")
 from gi.repository import Adw, Gdk, GLib, GObject, Graphene, Gtk  # noqa: E402
 
 from . import render  # noqa: E402
+from .errors import log  # noqa: E402
 from .document import ImageData, ImageMark, Stroke, TextMark  # noqa: E402
 
 MARGIN = 16
@@ -27,7 +27,6 @@ ERASER_RADIUS_PX = 10
 MOVE_THRESHOLD_PX = 4
 HANDLE_PX = 9  # resize handle size
 MIN_IMAGE_PT = 8
-DEBUG = bool(os.environ.get("PDF_ANNOTATOR_DEBUG"))
 
 
 @dataclass
@@ -84,8 +83,9 @@ class PageRenderer:
                 del cr
                 surf.flush()
             except Exception as e:  # keep the thread alive on odd pages
-                print(f"render page {index + 1} failed: {e}")
-                continue
+                log.warning("couldn't render page %d at %dx%d px", index + 1, px_w, px_h,
+                            exc_info=e)
+                surf = None  # reported to on_done as a failure
             GLib.idle_add(self._on_done, self, item, surf)
 
 
@@ -129,6 +129,7 @@ class PageCanvas(Gtk.DrawingArea, Gtk.Scrollable):
         self._tops = []
         self._content_w = self._content_h = 0
         self._cache = {}  # page -> (key, surface)
+        self._failed = set()  # render keys that failed; not retried
         self._renderer = None
 
         self._live = None  # Stroke being drawn
@@ -151,6 +152,7 @@ class PageCanvas(Gtk.DrawingArea, Gtk.Scrollable):
             self._renderer = None
         self.doc = doc
         self._cache.clear()
+        self._failed.clear()
         self._hidden.clear()
         self._live = self._moving = self._resizing = self._press = None
         self.selected = None
@@ -385,6 +387,10 @@ class PageCanvas(Gtk.DrawingArea, Gtk.Scrollable):
         if renderer is not self._renderer:
             return False
         index = key[0]
+        if surf is None:
+            self._failed.add(key)
+            self.queue_draw()
+            return False
         current = self._render_key(index) if self.doc else None
         if key == current or index not in self._cache:
             self._cache[index] = (key, surf)
@@ -418,7 +424,9 @@ class PageCanvas(Gtk.DrawingArea, Gtk.Scrollable):
             cr.fill()
             key = self._render_key(i)
             cached = self._cache.get(i)
-            if cached is None:
+            if cached is None and key in self._failed:
+                self._draw_failed_page(cr, sx, sy, w, h)
+            elif cached is None:
                 cr.set_source_rgb(1, 1, 1)
                 cr.rectangle(sx, sy, w, h)
                 cr.fill()
@@ -433,7 +441,7 @@ class PageCanvas(Gtk.DrawingArea, Gtk.Scrollable):
                 cr.get_source().set_filter(cairo.FILTER_GOOD)
                 cr.paint()
                 cr.restore()
-            if cached is None or cached[0] != key:
+            if (cached is None or cached[0] != key) and key not in self._failed:
                 wanted.append(key)
 
             marks = by_page.get(i)
@@ -474,13 +482,28 @@ class PageCanvas(Gtk.DrawingArea, Gtk.Scrollable):
                 if 0 <= j < len(self._rects):
                     k = self._render_key(j)
                     c = self._cache.get(j)
-                    if c is None or c[0] != k:
+                    if (c is None or c[0] != k) and k not in self._failed:
                         wanted.append(k)
             lo, hi = vis[0] - 3, vis[-1] + 3
             for j in [j for j in self._cache if j < lo or j > hi]:
                 del self._cache[j]
         if self._renderer:
             self._renderer.want(wanted)
+
+    @staticmethod
+    def _draw_failed_page(cr, x, y, w, h):
+        cr.save()
+        cr.set_source_rgb(0.94, 0.94, 0.94)
+        cr.rectangle(x, y, w, h)
+        cr.fill()
+        cr.rectangle(x, y, w, h)
+        cr.clip()
+        layout = render.make_layout(cr, "This page couldn't be displayed.", 15)
+        _ink, logical = layout.get_pixel_extents()
+        cr.move_to(x + (w - logical.width) / 2, y + (h - logical.height) / 2)
+        cr.set_source_rgb(0.4, 0.4, 0.4)
+        render.PangoCairo.show_layout(cr, layout)
+        cr.restore()
 
     def _selection_rect(self):
         """Selected mark's rect in widget coordinates (incl. live preview)."""
@@ -644,9 +667,8 @@ class PageCanvas(Gtk.DrawingArea, Gtk.Scrollable):
                 hx = axes[Gdk.AxisUse.X] + offx
                 hy = axes[Gdk.AxisUse.Y] + offy
                 if not (x0 <= hx <= x1 and y0 <= hy <= y1):
-                    if DEBUG:
-                        print(f"discarding stylus history: ({hx:.1f},{hy:.1f}) "
-                              f"outside last={last} cur=({wx:.1f},{wy:.1f})")
+                    log.debug("discarding stylus history: (%.1f,%.1f) outside "
+                              "last=%s cur=(%.1f,%.1f)", hx, hy, last, wx, wy)
                     return []
                 p = None
                 if tc.flags & Gdk.AxisFlags.PRESSURE:

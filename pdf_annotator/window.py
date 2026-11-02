@@ -10,7 +10,7 @@ gi.require_version("Adw", "1")
 gi.require_version("Graphene", "1.0")
 from gi.repository import Adw, Gdk, Gio, GLib, Graphene, Gtk  # noqa: E402
 
-from . import settings  # noqa: E402
+from . import errors, settings  # noqa: E402
 from .canvas import PageCanvas  # noqa: E402
 from .document import Document, ImageError, LoadError, write_atomic  # noqa: E402
 from .thumbnails import ThumbnailPanel  # noqa: E402
@@ -301,7 +301,13 @@ class Window(Adw.ApplicationWindow):
         try:
             doc = Document.load(path)
         except LoadError as e:
-            self._error("Could not open PDF", f"{os.path.basename(path)}: {e}")
+            self._error("Couldn't Open PDF", e)
+            return
+        except Exception as e:  # a bug; still tell the user something useful
+            errors.log.error("unexpected error opening %s", path, exc_info=e)
+            self._error("Couldn't Open PDF", errors.UserError(
+                f"Something went wrong while opening {errors.name(path)}.",
+                errors.technical(e)))
             return
         doc.on_changed = self._on_doc_changed
         self.doc = doc
@@ -323,7 +329,7 @@ class Window(Adw.ApplicationWindow):
             try:
                 data = value.load_contents(None)[1]
             except GLib.Error as e:
-                self._error("Could not read image", e.message)
+                self._error("Couldn't Insert Image", errors.read_error(e, path))
                 return True
             self._insert_image_bytes(data, (pt.x, pt.y) if ok else None)
         else:
@@ -346,10 +352,13 @@ class Window(Adw.ApplicationWindow):
         def done(dlg, res):
             try:
                 f = dlg.open_finish(res)
+            except GLib.Error:
+                return  # dismissed
+            try:
                 data = f.load_contents(None)[1]
             except GLib.Error as e:
-                if not e.matches(Gtk.dialog_error_quark(), Gtk.DialogError.DISMISSED):
-                    self._error("Could not read image", e.message)
+                path = f.get_path() or f.get_basename()
+                self._error("Couldn't Insert Image", errors.read_error(e, path))
                 return
             self._insert_image_bytes(data)
         dialog.open(self, None, done)
@@ -379,7 +388,11 @@ class Window(Adw.ApplicationWindow):
         try:
             self.canvas.insert_image(bytes(data), at)
         except ImageError as e:
-            self._error("Could not insert image", str(e))
+            self._error("Couldn't Insert Image", e)
+        except Exception as e:  # a bug; still tell the user something useful
+            errors.log.error("unexpected error inserting image", exc_info=e)
+            self._error("Couldn't Insert Image", errors.UserError(
+                "Something went wrong while inserting the image.", errors.technical(e)))
 
     # ------------------------------------------------------------ save
 
@@ -436,7 +449,7 @@ class Window(Adw.ApplicationWindow):
         def finished(err):
             self._saving = False
             if err is not None:
-                self._error("Could not save", str(err))
+                self._error(f"Couldn't Save {errors.name(path)}", errors.save_error(err, path))
             elif not flatten and doc is self.doc:
                 doc.path = path
                 doc.mark_saved(marker)
@@ -491,9 +504,17 @@ class Window(Adw.ApplicationWindow):
         self._confirm_unsaved(really_close)
         return True
 
-    def _error(self, heading, body):
-        dlg = Adw.AlertDialog(heading=heading, body=body)
+    def _error(self, heading, error):
+        """Show a UserError: its plain message, with the technical cause
+        tucked away under "Technical Details"."""
+        errors.log.warning("%s: %s%s", heading, error.message,
+                           f" ({error.details})" if error.details else "")
+        dlg = Adw.AlertDialog(heading=heading, body=error.message)
         dlg.add_response("ok", "OK")
+        if error.details:
+            label = Gtk.Label(label=error.details, selectable=True, wrap=True,
+                              xalign=0, css_classes=["monospace", "caption"])
+            dlg.set_extra_child(Gtk.Expander(label="Technical Details", child=label))
         dlg.present(self)
 
     # ------------------------------------------------------------ tools & style

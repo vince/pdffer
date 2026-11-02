@@ -1,5 +1,6 @@
 """Application entry point."""
 
+import logging
 import os
 import sys
 
@@ -78,4 +79,7 @@ class App(Adw.Application):
 
 
 def main():
+    logging.basicConfig(
+        format="pdf-annotator: %(levelname)s: %(message)s",
+        level=logging.DEBUG if os.environ.get("PDF_ANNOTATOR_DEBUG") else logging.WARNING)
     return App().run(sys.argv)

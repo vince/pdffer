@@ -30,7 +30,8 @@ class _Thumb(Gtk.DrawingArea):
             return
         page = doc.pages[self.index]
         surf = panel.thumbs.get(self.index)
-        cr.set_source_rgb(1, 1, 1)
+        shade = 0.9 if self.index in panel.failed else 1.0  # grey: couldn't render
+        cr.set_source_rgb(shade, shade, shade)
         cr.rectangle(0, 0, w, h)
         cr.fill()
         if surf is not None:
@@ -61,6 +62,7 @@ class ThumbnailPanel(Gtk.Box):
         self.canvas = canvas
         self.doc = None
         self.thumbs = {}  # page index -> cairo surface
+        self.failed = set()  # page indexes that couldn't be rendered
         self._bound = {}  # page index -> _Thumb
         self._renderer = None
         self._request_id = 0
@@ -89,6 +91,7 @@ class ThumbnailPanel(Gtk.Box):
             self._renderer = None
         self.doc = doc
         self.thumbs.clear()
+        self.failed.clear()
         n = len(doc.pages) if doc else 0
         self._syncing = True
         self.model.splice(0, self.model.get_n_items(), [str(i + 1) for i in range(n)])
@@ -173,13 +176,19 @@ class ThumbnailPanel(Gtk.Box):
         self._request_id = 0
         if self._renderer and self.doc:
             self._renderer.want([self._key(i) for i in sorted(self._bound)
-                                 if i not in self.thumbs])
+                                 if i not in self.thumbs and i not in self.failed])
         return False
 
     def _on_rendered(self, renderer, key, surf):
         if renderer is not self._renderer:
             return False
         index = key[0]
+        if surf is None:
+            self.failed.add(index)
+            t = self._bound.get(index)
+            if t is not None:
+                t.queue_draw()
+            return False
         self.thumbs[index] = surf
         if len(self.thumbs) > MAX_CACHED:
             for i in [i for i in self.thumbs if i not in self._bound][:len(self.thumbs) // 3]:

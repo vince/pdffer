@@ -32,6 +32,7 @@ gi.require_version("GdkPixbuf", "2.0")
 from gi.repository import Gdk, GdkPixbuf, Gio, GLib, Poppler  # noqa: E402
 
 from . import render  # noqa: E402
+from .errors import UserError, name, read_error, technical  # noqa: E402
 
 DATA_KEY = "/PdfAnnotatorData"
 IMAGE_KEY = "/PdfAnnotatorImage"
@@ -94,7 +95,7 @@ class TextMark:
         self.y += dy
 
 
-class ImageError(Exception):
+class ImageError(UserError):
     pass
 
 
@@ -107,7 +108,8 @@ class ImageData:
             stream = Gio.MemoryInputStream.new_from_bytes(GLib.Bytes.new(self.data))
             pixbuf = GdkPixbuf.Pixbuf.new_from_stream(stream, None)
         except GLib.Error as e:
-            raise ImageError(f"Unsupported or damaged image ({e.message})") from e
+            raise ImageError("This file isn't an image PDF Annotator can read, or it's "
+                             "damaged. PNG and JPEG images work best.", technical(e)) from e
         orientation = pixbuf.get_option("orientation")
         rotated = orientation not in (None, "1")
         if rotated:
@@ -295,7 +297,7 @@ class _Move:
 
 # ------------------------------------------------------------- document
 
-class LoadError(Exception):
+class LoadError(UserError):
     pass
 
 
@@ -321,16 +323,34 @@ class Document:
             with open(path, "rb") as fh:
                 data = fh.read()
         except OSError as e:
-            raise LoadError(f"Could not read file: {e.strerror}") from e
+            err = read_error(e, path)
+            raise LoadError(err.message, err.details) from e
+        if not data:
+            raise LoadError(f"{name(path)} is empty.")
+        damaged = f"{name(path)} is damaged and can't be opened."
         try:
             pdf = pikepdf.open(io.BytesIO(data))
         except pikepdf.PasswordError as e:
-            raise LoadError("This PDF is password protected.") from e
+            raise LoadError(f"{name(path)} is protected with a password. PDF Annotator "
+                            "can't open password-protected PDFs.", technical(e)) from e
         except Exception as e:
-            raise LoadError(f"Not a readable PDF: {e}") from e
+            if b"%PDF" not in data[:1024]:
+                raise LoadError(f"{name(path)} isn't a PDF.", technical(e)) from e
+            raise LoadError(damaged, technical(e)) from e
+        try:
+            return cls._load_pdf(path, data, pdf)
+        except LoadError:
+            raise
+        except Exception as e:
+            raise LoadError(damaged, technical(e)) from e
 
+    @classmethod
+    def _load_pdf(cls, path, data, pdf):
+        damaged = f"{name(path)} is damaged and can't be opened."
         pages, marks, stripped = [], [], False
         with pdf:
+            if len(pdf.pages) == 0:
+                raise LoadError(f"{name(path)} has no pages.")
             for index, page in enumerate(pdf.pages):
                 info = page_info_from_pikepdf(page)
                 pages.append(info)
@@ -369,9 +389,10 @@ class Document:
         try:
             pdoc = Poppler.Document.new_from_bytes(gbytes, None)
         except GLib.Error as e:
-            raise LoadError(f"Poppler could not open this PDF: {e.message}") from e
+            raise LoadError(damaged, technical(e)) from e
         if pdoc.get_n_pages() != len(pages):
-            raise LoadError("Page count mismatch while loading this PDF.")
+            raise LoadError(damaged, f"pikepdf found {len(pages)} pages, "
+                                     f"Poppler {pdoc.get_n_pages()}")
         # Use Poppler's idea of the displayed size for layout.
         for i, info in enumerate(pages):
             w, h = pdoc.get_page(i).get_size()

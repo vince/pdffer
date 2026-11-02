@@ -77,6 +77,14 @@ are rewritten in full instead.
 Saves are atomic (written to a temp file, then renamed), so a crash
 mid-save won't corrupt your PDF.
 
+## Troubleshooting
+
+Error messages explain the problem in plain language; the dialog's
+**Technical Details** section has the underlying cause. Running
+`pdf-annotator` from a terminal also logs warnings there, and
+`PDF_ANNOTATOR_DEBUG=1 pdf-annotator file.pdf` logs more detail (for example
+about stylus input).
+
 ## Development
 
     python3 -m unittest discover tests
@@ -85,4 +93,5 @@ mid-save won't corrupt your PDF.
 - `pdf_annotator/render.py`: cairo drawing shared by screen and PDF output
 - `pdf_annotator/canvas.py`: scrolling page view, threaded rendering, input
 - `pdf_annotator/thumbnails.py`: page thumbnail sidebar
+- `pdf_annotator/errors.py`: plain-language error messages
 - `pdf_annotator/window.py`, `app.py`: GTK/libadwaita UI

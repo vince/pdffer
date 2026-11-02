@@ -4,6 +4,7 @@ The same functions draw marks on screen and into the PDF appearance
 streams, so what you see is what gets saved.
 """
 
+import functools
 import math
 
 import cairo
@@ -45,6 +46,7 @@ def make_layout(cr, text, size):
 _measure_cr = None
 
 
+@functools.lru_cache(maxsize=2048)
 def text_extent(text, size):
     """Logical (width, height) of text in points. Main thread only."""
     global _measure_cr

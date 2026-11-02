@@ -41,15 +41,36 @@ FORMAT_VERSION = 1
 
 # ---------------------------------------------------------------- marks
 
+class _BBoxCache:
+    """Caches bbox(); any attribute assignment (move, edit, undo) clears it."""
+
+    def __setattr__(self, key, value):
+        object.__setattr__(self, key, value)
+        if key != "_bbox":
+            object.__setattr__(self, "_bbox", None)
+
+    def bbox(self):
+        b = getattr(self, "_bbox", None)
+        if b is None:
+            b = self._compute_bbox()
+            object.__setattr__(self, "_bbox", b)
+        return b
+
+
 @dataclass(eq=False)
-class Stroke:
+class Stroke(_BBoxCache):
     page: int
     points: list  # [(x, y, pressure)] in page display coordinates (pt)
     color: tuple
     width: float
     kind: str = field(default="ink", init=False)
 
-    def bbox(self):
+    def add_point(self, x, y, p):
+        """Extend a stroke being drawn (keeps the bbox cache valid)."""
+        self.points.append((x, y, p))
+        self._bbox = None
+
+    def _compute_bbox(self):
         pad = self.width * 1.5 / 2 + 0.5
         xs = [p[0] for p in self.points]
         ys = [p[1] for p in self.points]
@@ -73,7 +94,7 @@ class Stroke:
 
 
 @dataclass(eq=False)
-class TextMark:
+class TextMark(_BBoxCache):
     page: int
     x: float  # top-left, page display coordinates (pt)
     y: float
@@ -82,7 +103,7 @@ class TextMark:
     size: float
     kind: str = field(default="text", init=False)
 
-    def bbox(self):
+    def _compute_bbox(self):
         w, h = render.text_extent(self.text, self.size)
         return self.x, self.y, self.x + w, self.y + h
 
@@ -148,7 +169,7 @@ class ImageData:
 
 
 @dataclass(eq=False)
-class ImageMark:
+class ImageMark(_BBoxCache):
     page: int
     x: float  # top-left, page display coordinates (pt)
     y: float
@@ -157,7 +178,7 @@ class ImageMark:
     image: ImageData
     kind: str = field(default="image", init=False)
 
-    def bbox(self):
+    def _compute_bbox(self):
         return self.x, self.y, self.x + self.w, self.y + self.h
 
     def hit(self, x, y, r):
@@ -302,11 +323,13 @@ class LoadError(UserError):
 
 
 class Document:
-    def __init__(self, path, base_bytes, poppler_doc, pages, marks, original_bytes=None):
+    def __init__(self, path, poppler_doc, pages, marks, original_gbytes, base_gbytes):
         self.path = path
-        self.base_bytes = base_bytes  # the PDF without our annotations
-        # the file exactly as loaded; saves append to it (incremental update)
-        self.original_bytes = original_bytes if original_bytes is not None else base_bytes
+        # The file exactly as loaded; saves append to it (incremental update).
+        self._original = original_gbytes
+        # What Poppler displays: the file without our annotations. The same
+        # buffer as the original unless there were annotations to strip.
+        self.base_gbytes = base_gbytes
         self.poppler = poppler_doc
         self.pages = pages
         self.marks = marks
@@ -314,6 +337,11 @@ class Document:
         self._redo = []
         self._saved_marker = None
         self.on_changed = None  # callback()
+        self.version = 0  # bumped on every change; lets views cache renders
+
+    @property
+    def original_bytes(self):
+        return self._original.get_data()
 
     # ---- loading
 
@@ -378,16 +406,19 @@ class Document:
                     page.obj.Annots = pikepdf.Array(keep)
                 else:
                     del page.obj["/Annots"]
+            # Keep one copy of the file in memory (as GLib.Bytes, which
+            # Poppler shares) rather than Python bytes plus a GLib copy.
+            original = GLib.Bytes.new(data)
             if stripped:
                 buf = io.BytesIO()
                 pdf.save(buf)
-                base = buf.getvalue()
+                base = GLib.Bytes.new(buf.getvalue())
+                del buf
             else:
-                base = data
+                base = original
 
-        gbytes = GLib.Bytes.new(base)
         try:
-            pdoc = Poppler.Document.new_from_bytes(gbytes, None)
+            pdoc = Poppler.Document.new_from_bytes(base, None)
         except GLib.Error as e:
             raise LoadError(damaged, technical(e)) from e
         if pdoc.get_n_pages() != len(pages):
@@ -397,13 +428,12 @@ class Document:
         for i, info in enumerate(pages):
             w, h = pdoc.get_page(i).get_size()
             info.width, info.height = w, h
-        doc = cls(path, base, pdoc, pages, marks, original_bytes=data)
-        doc.base_gbytes = gbytes  # shared with extra Poppler documents
-        return doc
+        return cls(path, pdoc, pages, marks, original, base)
 
     # ---- editing
 
     def _changed(self):
+        self.version += 1
         if self.on_changed:
             self.on_changed()
 

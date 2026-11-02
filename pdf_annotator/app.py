@@ -10,6 +10,7 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 from gi.repository import Adw, Gdk, Gio, Gtk  # noqa: E402
 
+from . import settings  # noqa: E402
 from .canvas import PageRenderer  # noqa: E402
 from .window import APP_NAME, Window, install_css  # noqa: E402
 
@@ -53,6 +54,7 @@ class App(Adw.Application):
             self.add_action(a)
 
     def do_shutdown(self):
+        settings.flush()
         PageRenderer.shutdown_all()
         Adw.Application.do_shutdown(self)
 

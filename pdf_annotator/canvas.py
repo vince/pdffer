@@ -153,6 +153,7 @@ class PageCanvas(Gtk.DrawingArea, Gtk.Scrollable):
         self._tops = []
         self._content_w = self._content_h = 0
         self._cache = {}  # page -> (key, surface)
+        self._overlays = {}  # page -> (key, surface): finished marks, pre-rendered
         self._failed = set()  # render keys that failed; not retried
         self._renderer = None
 
@@ -176,6 +177,7 @@ class PageCanvas(Gtk.DrawingArea, Gtk.Scrollable):
             self._renderer = None
         self.doc = doc
         self._cache.clear()
+        self._overlays.clear()
         self._failed.clear()
         self._hidden.clear()
         self._live = self._moving = self._resizing = self._press = None
@@ -462,27 +464,37 @@ class PageCanvas(Gtk.DrawingArea, Gtk.Scrollable):
                 cr.translate(sx, sy)
                 cr.scale(w / surf.get_width(), h / surf.get_height())
                 cr.set_source_surface(surf, 0, 0)
-                cr.get_source().set_filter(cairo.FILTER_GOOD)
+                # A render at the current zoom maps ~1:1 to screen pixels, so
+                # the (much slower) smoothing filter is only needed for stale
+                # renders being scaled during zoom.
+                cr.get_source().set_filter(
+                    cairo.FILTER_FAST if ckey == key else cairo.FILTER_GOOD)
                 cr.paint()
                 cr.restore()
             if (cached is None or cached[0] != key) and key not in self._failed:
                 wanted.append(key)
 
-            marks = by_page.get(i)
+            # Finished marks come from a cached layer; only what is changing
+            # right now (stroke being drawn, mark being moved) is drawn live.
+            moving = self._moving[0] if self._moving else None
+            resizing = self._resizing[0] if self._resizing else None
+            marks = by_page.get(i, ())
+            static = [m for m in marks if m is not moving and m is not resizing]
+            dynamic = [m for m in marks if m is moving or m is resizing]
             live = self._live if self._live and self._live.page == i else None
-            if marks or live:
+            if static or dynamic or live:
                 cr.save()
                 cr.rectangle(sx, sy, w, h)
                 cr.clip()
+                if static:
+                    self._paint_overlay(cr, i, static, sx, sy, w, h)
                 cr.translate(sx, sy)
                 cr.scale(self.zoom, self.zoom)
-                for m in marks or ():
-                    if self._moving and self._moving[0] is m:
+                for m in dynamic:
+                    if m is moving:
                         render.draw_mark(cr, m, self._moving[1], self._moving[2])
-                    elif self._resizing and self._resizing[0] is m:
-                        render.draw_image(cr, m, self._resizing[1])
                     else:
-                        render.draw_mark(cr, m)
+                        render.draw_image(cr, m, self._resizing[1])
                 if live:
                     render.draw_mark(cr, live)
                 cr.restore()
@@ -511,8 +523,38 @@ class PageCanvas(Gtk.DrawingArea, Gtk.Scrollable):
             lo, hi = vis[0] - 3, vis[-1] + 3
             for j in [j for j in self._cache if j < lo or j > hi]:
                 del self._cache[j]
+        for j in [j for j in self._overlays if j not in vis]:
+            del self._overlays[j]
         if self._renderer:
             self._renderer.want(wanted)
+
+    def _paint_overlay(self, cr, index, marks, sx, sy, w, h):
+        """Paint the page's finished marks from a cached transparent layer,
+        re-rendering it only when something it depends on changed."""
+        s = self._scale()
+        pw, ph = math.ceil(w * s), math.ceil(h * s)
+        if pw * ph > MAX_RENDER_PIXELS:  # extreme zoom: draw directly
+            cr.save()
+            cr.translate(sx, sy)
+            cr.scale(self.zoom, self.zoom)
+            for m in marks:
+                render.draw_mark(cr, m)
+            cr.restore()
+            return
+        key = (self.zoom, s, pw, ph, self.doc.version, frozenset(self._hidden),
+               tuple(id(m) for m in marks))
+        cached = self._overlays.get(index)
+        if cached is None or cached[0] != key:
+            surf = cairo.ImageSurface(cairo.FORMAT_ARGB32, pw, ph)
+            surf.set_device_scale(s, s)
+            ocr = cairo.Context(surf)
+            ocr.scale(self.zoom, self.zoom)
+            for m in marks:
+                render.draw_mark(ocr, m)
+            del ocr
+            self._overlays[index] = cached = (key, surf)
+        cr.set_source_surface(cached[1], sx, sy)
+        cr.paint()
 
     @staticmethod
     def _draw_failed_page(cr, x, y, w, h):
@@ -769,7 +811,7 @@ class PageCanvas(Gtk.DrawingArea, Gtk.Scrollable):
                 last = pts[-1]
                 if abs(px - last[0]) + abs(py - last[1]) < 0.35 / self.zoom:
                     continue
-                pts.append((px, py, max(0.05, min(1.0, p))))
+                self._live.add_point(px, py, max(0.05, min(1.0, p)))
             self.queue_draw()
         elif tool == "eraser":
             lx, ly = st["last"]
@@ -980,13 +1022,16 @@ class TextEditor:
         c = self.canvas
         z = c.zoom
         r, g, b = (int(v * 255) for v in self.color)
-        self._provider().load_from_string(
-            "textview.annot-editor, textview.annot-editor text {"
-            " background: transparent; padding: 0; margin: 0;"
-            f" font-family: {render.FONT_FAMILY}; font-size: {self.size * z:.2f}px;"
-            f" color: rgb({r},{g},{b}); caret-color: rgb({r},{g},{b}); }}"
-            "textview.annot-editor { outline: 1px dashed alpha(currentColor, 0.6);"
-            " outline-offset: 2px; }")
+        css_key = (r, g, b, round(self.size * z, 2))
+        if css_key != getattr(self, "_css_key", None):  # restyling is costly
+            self._css_key = css_key
+            self._provider().load_from_string(
+                "textview.annot-editor, textview.annot-editor text {"
+                " background: transparent; padding: 0; margin: 0;"
+                f" font-family: {render.FONT_FAMILY}; font-size: {self.size * z:.2f}px;"
+                f" color: rgb({r},{g},{b}); caret-color: rgb({r},{g},{b}); }}"
+                "textview.annot-editor { outline: 1px dashed alpha(currentColor, 0.6);"
+                " outline-offset: 2px; }")
         wx, wy = c.page_to_widget(self.page, self.x, self.y)
         ok, pt = c.compute_point(c.overlay, Graphene.Point().init(wx, wy))
         if ok:

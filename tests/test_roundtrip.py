@@ -110,7 +110,7 @@ class RoundTrip(unittest.TestCase):
                 self.assertAlmostEqual(m.y, 200, places=1)
                 self.assertEqual(m.text, "HP 23")
         # base doc for editing must not contain our annotations
-        self.assertEqual(len(render_annots(doc2.base_bytes)), 0)
+        self.assertEqual(len(render_annots(doc2.base_gbytes.get_data())), 0)
         # saving again doesn't duplicate annotations
         data2 = doc2.snapshot()[1](False)
         self.assertEqual(len(render_annots(data2)), 6)

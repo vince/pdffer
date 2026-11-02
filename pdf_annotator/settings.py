@@ -16,16 +16,46 @@ DEFAULTS = {
 }
 
 
+def _number(lo, hi):
+    def check(v):
+        if isinstance(v, (int, float)) and not isinstance(v, bool) and lo <= v <= hi:
+            return float(v)
+        return None
+    return check
+
+
+def _color(v):
+    if isinstance(v, list) and len(v) == 3 and all(_number(0, 1)(c) is not None for c in v):
+        return [float(c) for c in v]
+    return None
+
+
+# Each returns the cleaned value, or None if the stored value is unusable.
+_VALIDATORS = {
+    "tool": lambda v: v if v in ("select", "pen", "text", "eraser") else None,
+    "color": _color,
+    "width": _number(0.5, 8),
+    "text_size": _number(6, 72),
+    "sidebar": lambda v: v if isinstance(v, bool) else None,
+}
+
+
 def load():
+    """Saved preferences, with defaults for anything missing or invalid (a
+    damaged or hand-edited file must never stop the app from starting)."""
     data = dict(DEFAULTS)
     try:
         with open(_PATH) as fh:
             stored = json.load(fh)
-        for k in DEFAULTS:
-            if k in stored:
-                data[k] = stored[k]
     except (OSError, ValueError):
-        pass
+        return data
+    if not isinstance(stored, dict):
+        return data
+    for key, check in _VALIDATORS.items():
+        if key in stored:
+            value = check(stored[key])
+            if value is not None:
+                data[key] = value
     return data
 
 

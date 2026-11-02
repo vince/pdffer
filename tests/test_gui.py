@@ -183,6 +183,16 @@ class GuiTests(unittest.TestCase):
 
         run_app(steps, prefs={"tool": "select"})
 
+    def test_starts_with_damaged_settings(self):
+        # regression: invalid saved values crashed the app at startup
+        def steps(win):
+            yield 0
+            self.assertEqual(win.canvas.tool, "pen")
+            self.assertEqual(len(win.canvas.style.color), 3)
+
+        run_app(steps, prefs={"color": "red", "width": "thick", "tool": "laser",
+                              "text_size": None})
+
     # ------------------------------------------------------------ pages drawer
 
     def test_resizing_keeps_your_place(self):

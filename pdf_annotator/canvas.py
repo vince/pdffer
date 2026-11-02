@@ -259,8 +259,17 @@ class PageCanvas(Gtk.DrawingArea, Gtk.Scrollable):
         return max(MIN_ZOOM, min(MAX_ZOOM, avail / maxw))
 
     def _relayout(self):
+        # Keep the same spot of the same page at the top of the view when
+        # the layout changes (window resized, drawer opened, fit-width zoom
+        # recomputed); a raw pixel offset would land on a different page.
+        anchor = None
+        if self.doc and self._rects and self.vadjustment:
+            oy = self.vadjustment.get_value()
+            i = max(0, bisect.bisect_right(self._tops, oy) - 1)
+            anchor = (i, (oy - self._rects[i][1]) / self._layout_zoom)
         if self.doc and self.fit_width:
             self.zoom = self._fit_zoom()
+        self._layout_zoom = self.zoom
         self._rects, self._tops = [], []
         view_w = self.get_width()
         if self.doc:
@@ -279,6 +288,9 @@ class PageCanvas(Gtk.DrawingArea, Gtk.Scrollable):
         else:
             self._content_w = self._content_h = 0
         self._configure_adjustments()
+        if anchor is not None:
+            i, offset = anchor
+            self.vadjustment.set_value(self._rects[i][1] + offset * self.zoom)
         if self.editor:
             self.editor.update_geometry()
         self.queue_draw()

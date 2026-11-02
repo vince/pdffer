@@ -26,7 +26,7 @@ import cairo, pikepdf  # noqa
 PY
 then
     echo "Missing dependencies. On Fedora run:"
-    echo "  sudo dnf install python3-gobject gtk4 libadwaita poppler-glib python3-cairo python3-pikepdf"
+    echo "  sudo dnf install python3-gobject gtk4 libadwaita poppler-glib python3-cairo python3-pikepdf python3-cryptography"
     exit 1
 fi
 

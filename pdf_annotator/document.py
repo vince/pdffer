@@ -9,6 +9,8 @@ of the PDF and become editable marks again.
 
 import copy
 import datetime
+import decimal
+import hashlib
 import io
 import json
 import math
@@ -455,7 +457,7 @@ class Document:
         files that can't take an incremental update, are fully rewritten.
         """
         items = [_ExportItem(copy.deepcopy(m), self.pages[m.page]) for m in self.marks]
-        base, original = self.base_bytes, self.original_bytes
+        original = self.original_bytes
         marker = self._marker()
 
         def job(flatten):
@@ -464,7 +466,7 @@ class Document:
                     return build_incremental(original, items)
                 except NoIncremental:
                     pass
-            return build_pdf(base, items, flatten)
+            return build_pdf(original, items, flatten)
         return marker, job
 
 
@@ -606,10 +608,20 @@ def _make_annot(pdf, page, it, form, date):
     return annot
 
 
-def build_pdf(base_bytes, items, flatten=False):
-    """Return PDF bytes: the base document plus the given marks."""
-    pdf = pikepdf.open(io.BytesIO(base_bytes))
+def build_pdf(original, items, flatten=False):
+    """Return a full rewrite of `original` with our annotations replaced by
+    `items` (burned into the page content if flatten). Encryption and its
+    permissions are kept."""
+    pdf = pikepdf.open(io.BytesIO(original))
     with pdf:
+        for page in pdf.pages:
+            annots = page.obj.get("/Annots")
+            if isinstance(annots, pikepdf.Array) and any(_is_ours(a) for a in annots):
+                keep = [a for a in annots if not _is_ours(a)]
+                if keep:
+                    page.obj.Annots = pikepdf.Array(keep)
+                else:
+                    del page.obj["/Annots"]
         if items:
             ap_pdf = pikepdf.open(io.BytesIO(_render_appearances(items)))
             date = _pdf_date()
@@ -633,7 +645,8 @@ def build_pdf(base_bytes, items, flatten=False):
                 else:
                     page.obj.Annots = pikepdf.Array([ref])
         out = io.BytesIO()
-        pdf.save(out)
+        # pikepdf drops encryption unless asked to keep it
+        pdf.save(out, encryption=True if pdf.is_encrypted else None)
         return out.getvalue()
 
 
@@ -645,7 +658,6 @@ class NoIncremental(Exception):
 
 _STARTXREF = re.compile(rb"startxref\s+(\d+)")
 _OBJ_HEADER = re.compile(rb"\s*\d+\s+\d+\s+obj\b")
-_REF = re.compile(rb"(\d+) (\d+) R\b")
 
 
 def _last_xref(data):
@@ -666,22 +678,136 @@ def _is_ours(annot):
     return isinstance(annot, pikepdf.Dictionary) and DATA_KEY in annot
 
 
-def _serialize(obj):
-    """(bytes of an indirect object's body, references it contains)."""
-    if isinstance(obj, pikepdf.Stream):
-        raw = obj.read_raw_bytes()
-        obj.stream_dict.Length = len(raw)
-        head = obj.stream_dict.unparse()
-        return head + b"\nstream\n" + raw + b"\nendstream", _REF.findall(head)
-    if isinstance(obj, pikepdf.Object):
-        body = obj.unparse(resolved=True)
-    elif isinstance(obj, bool):  # pikepdf returns some scalars as Python values
-        body = b"true" if obj else b"false"
-    elif obj is None:
-        body = b"null"
+def _rc4(key, data):
+    s = list(range(256))
+    j = 0
+    for i in range(256):
+        j = (j + s[i] + key[i % len(key)]) & 0xFF
+        s[i], s[j] = s[j], s[i]
+    out = bytearray(len(data))
+    i = j = 0
+    for n, byte in enumerate(data):
+        i = (i + 1) & 0xFF
+        j = (j + s[i]) & 0xFF
+        s[i], s[j] = s[j], s[i]
+        out[n] = byte ^ s[(s[i] + s[j]) & 0xFF]
+    return bytes(out)
+
+
+class _Crypt:
+    """Encrypts strings and streams of new objects with the document's own
+    security handler (PDF 32000 section 7.6), so an encrypted PDF can take
+    an incremental update."""
+
+    def __init__(self, pdf):
+        info = pdf.encryption
+        self.key = info.encryption_key
+
+        def method(m):
+            return {"none": None, "rc4": "rc4", "aes": "aesv2", "aesv3": "aesv3"}.get(m.name)
+        if info.V in (1, 2):
+            self.stream = self.string = "rc4"
+        elif info.V == 4:
+            self.stream, self.string = method(info.stream_method), method(info.string_method)
+        elif info.V == 5:
+            self.stream = self.string = "aesv3"
+        else:
+            raise NoIncremental(f"unsupported encryption V={info.V}")
+        if None in (self.stream, self.string) and \
+                "unknown" in (info.stream_method.name, info.string_method.name):
+            raise NoIncremental("unknown crypt filter")
+        if "aesv2" in (self.stream, self.string) or "aesv3" in (self.stream, self.string):
+            try:
+                from cryptography.hazmat.primitives import padding
+                from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+            except ImportError as e:
+                raise NoIncremental("python3-cryptography is needed for AES") from e
+            self._aes = (padding, Cipher, algorithms, modes)
+
+    def encrypt(self, data, objgen, kind):
+        method = self.stream if kind == "stream" else self.string
+        if method is None:
+            return data
+        if method == "aesv3":
+            key = self.key
+        else:
+            num, gen = objgen
+            salt = b"sAlT" if method == "aesv2" else b""
+            digest = hashlib.md5(self.key + num.to_bytes(4, "little")[:3] +
+                                 gen.to_bytes(4, "little")[:2] + salt).digest()
+            key = digest[:min(len(self.key) + 5, 16)]
+        if method == "rc4":
+            return _rc4(key, data)
+        padding, Cipher, algorithms, modes = self._aes
+        iv = os.urandom(16)
+        padder = padding.PKCS7(128).padder()
+        enc = Cipher(algorithms.AES(key), modes.CBC(iv)).encryptor()
+        return iv + enc.update(padder.update(data) + padder.finalize()) + enc.finalize()
+
+
+def _fmt_real(v):
+    if isinstance(v, decimal.Decimal):
+        text = format(v, "f")
     else:
-        body = str(obj).encode()
-    return body, _REF.findall(body)
+        text = f"{v:.6f}"
+    if "." in text:
+        text = text.rstrip("0").rstrip(".")
+    return text if text not in ("", "-", "-0") else "0"
+
+
+class _Writer:
+    """Serializes indirect objects for an incremental update, recording the
+    objects they reference and encrypting strings and streams if needed."""
+
+    def __init__(self, crypt=None):
+        self.crypt = crypt
+
+    def object(self, obj, objgen):
+        """(body bytes, [referenced objgens]) for an indirect object."""
+        self._objgen = objgen
+        self._refs = []
+        if isinstance(obj, pikepdf.Stream):
+            raw = obj.read_raw_bytes()
+            if self.crypt:
+                raw = self.crypt.encrypt(raw, objgen, "stream")
+            d = obj.stream_dict
+            items = [(k, d[k]) for k in d.keys() if k != "/Length"]
+            items.append(("/Length", len(raw)))
+            body = self._dict(items) + b"\nstream\n" + raw + b"\nendstream"
+        else:
+            body = self._value(obj, top=True)
+        return body, self._refs
+
+    def _dict(self, items):
+        parts = [pikepdf.Name(k).unparse() + b" " + self._value(v) for k, v in items]
+        return b"<< " + b" ".join(parts) + b" >>"
+
+    def _value(self, v, top=False):
+        if isinstance(v, pikepdf.Object) and not top and v.is_indirect:
+            self._refs.append(v.objgen)
+            return f"{v.objgen[0]} {v.objgen[1]} R".encode()
+        if isinstance(v, pikepdf.Dictionary):
+            return self._dict([(k, v[k]) for k in v.keys()])
+        if isinstance(v, pikepdf.Array):
+            return b"[" + b" ".join(self._value(x) for x in v) + b"]"
+        if isinstance(v, pikepdf.String):
+            data = bytes(v)
+            if self.crypt:
+                data = self.crypt.encrypt(data, self._objgen, "string")
+            return b"<" + data.hex().encode() + b">"
+        if isinstance(v, pikepdf.Name):
+            return v.unparse()
+        if isinstance(v, bool):
+            return b"true" if v else b"false"
+        if isinstance(v, int):
+            return str(v).encode()
+        if isinstance(v, (float, decimal.Decimal)):
+            return _fmt_real(v).encode()
+        if v is None:
+            return b"null"
+        if isinstance(v, pikepdf.Object):
+            return v.unparse()
+        raise NoIncremental(f"can't serialize {type(v).__name__}")
 
 
 def _xref_groups(entries):
@@ -705,8 +831,7 @@ def build_incremental(original, items):
     style, prev = _last_xref(original)
     pdf = pikepdf.open(io.BytesIO(original))
     with pdf:
-        if pdf.is_encrypted:
-            raise NoIncremental("encrypted")
+        writer = _Writer(_Crypt(pdf) if pdf.is_encrypted else None)
         orig_size = int(pdf.trailer.get("/Size", 0))
         # QPDF numbers new objects after the existing ones; find where.
         first_new = pdf.make_indirect(pikepdf.Dictionary()).objgen[0]
@@ -755,11 +880,10 @@ def build_incremental(original, items):
         queue, seen = list(changed), set(changed)
         while queue:
             objgen = queue.pop(0)
-            body, refs = _serialize(pdf.get_object(objgen))
+            body, refs = writer.object(pdf.get_object(objgen), objgen)
             offsets[objgen] = len(out)
             out += f"{objgen[0]} {objgen[1]} obj\n".encode() + body + b"\nendobj\n"
-            for num, gen in refs:
-                ref = (int(num), int(gen))
+            for ref in refs:
                 if ref[0] >= first_new and ref not in seen:
                     seen.add(ref)
                     queue.append(ref)
@@ -775,6 +899,12 @@ def build_incremental(original, items):
         common = f"/Root {root[0]} {root[1]} R"
         if info is not None and info.is_indirect:
             common += f" /Info {info.objgen[0]} {info.objgen[1]} R"
+        if pdf.is_encrypted:
+            # The file key depends on the first /ID, which we keep.
+            enc = trailer.get("/Encrypt")
+            if enc is None or not enc.is_indirect:
+                raise NoIncremental("no indirect /Encrypt in trailer")
+            common += f" /Encrypt {enc.objgen[0]} {enc.objgen[1]} R"
         common += f" /ID [<{id0.hex()}><{os.urandom(16).hex()}>] /Prev {prev}"
         size = max(orig_size, max(n for n, _g in offsets) + 1)
 

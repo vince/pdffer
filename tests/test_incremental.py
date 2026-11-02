@@ -10,11 +10,13 @@ import sys
 import tempfile
 import unittest
 
+import cairo
 import pikepdf
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from pdf_annotator.document import Document, Stroke, TextMark, write_atomic  # noqa: E402
+from pdf_annotator.document import (  # noqa: E402
+    Document, ImageData, ImageMark, Stroke, TextMark, write_atomic)
 from test_roundtrip import make_pdf, pixel, render_page  # noqa: E402
 
 RED = (1.0, 0.0, 0.0)
@@ -90,14 +92,56 @@ class Incremental(unittest.TestCase):
         write_atomic(saved, doc.snapshot()[1](False))
         self.assertEqual(Document.load(saved).marks, [])
 
-    def test_encrypted_falls_back_to_rewrite(self):
+    def test_encryption_and_permissions_kept(self):
         path, _ = self._source("table")
-        enc = os.path.join(self.dir, "enc.pdf")
-        with pikepdf.open(path) as pdf:
-            pdf.save(enc, encryption=pikepdf.Encryption(owner="owner", user=""))
-        out = self._annotate(enc).snapshot()[1](False)
-        r, g, b = pixel(render_page(out, 0), 150, 100)
-        self.assertTrue(r > 200 and g < 80)
+        perms = pikepdf.Permissions(modify_other=False, extract=False)
+        kinds = {
+            "rc4-40": pikepdf.Encryption(owner="o", user="", R=2, aes=False,
+                                         metadata=False, allow=perms),
+            "rc4-128": pikepdf.Encryption(owner="o", user="", R=3, aes=False,
+                                          metadata=False, allow=perms),
+            "aes-128": pikepdf.Encryption(owner="o", user="", R=4, aes=True, allow=perms),
+            "aes-256": pikepdf.Encryption(owner="o", user="", R=6, allow=perms),
+        }
+        png = io.BytesIO()
+        surf = cairo.ImageSurface(cairo.FORMAT_RGB24, 10, 10)
+        cairo.Context(surf).paint()
+        surf.write_to_png(png)
+        for name, enc in kinds.items():
+            for style in (pikepdf.ObjectStreamMode.disable, pikepdf.ObjectStreamMode.generate):
+                with self.subTest(encryption=name, objstreams=style.name):
+                    src = os.path.join(self.dir, f"{name}.pdf")
+                    with pikepdf.open(path) as pdf:
+                        pdf.save(src, encryption=enc, object_stream_mode=style)
+                    original = read(src)
+                    doc = Document.load(src)
+                    doc.add_mark(Stroke(1, [(100, 100, 0.5), (200, 100, 0.5)], RED, 4))
+                    doc.add_mark(TextMark(1, 100, 200, "HP 23 — ünïcødé", RED, 24))
+                    doc.add_mark(ImageMark(1, 300, 300, 20, 20, ImageData(png.getvalue())))
+                    out = doc.snapshot()[1](False)
+
+                    self.assertEqual(out[:len(original)], original, "fell back to rewrite")
+                    with pikepdf.open(io.BytesIO(out)) as pdf:
+                        self.assertTrue(pdf.is_encrypted)
+                        self.assertEqual(pdf.encryption.R, enc.R)
+                        self.assertFalse(pdf.allow.modify_other)
+                        self.assertFalse(pdf.allow.extract)
+                        self.assertEqual(pdf.get_warnings(), [])
+                    # Poppler decrypts independently: the marks must render.
+                    r, g, b = pixel(render_page(out, 1), 150, 100)
+                    self.assertTrue(r > 200 and g < 80, "encrypted appearance unreadable")
+                    saved = os.path.join(self.dir, "out.pdf")
+                    write_atomic(saved, out)
+                    marks = Document.load(saved).marks
+                    self.assertEqual([m.text for m in marks if m.kind == "text"],
+                                     ["HP 23 — ünïcødé"])
+                    self.assertEqual([m.image.data for m in marks if m.kind == "image"],
+                                     [png.getvalue()])
+
+                    flat = doc.snapshot()[1](True)
+                    with pikepdf.open(io.BytesIO(flat)) as pdf:
+                        self.assertTrue(pdf.is_encrypted, "flattened copy lost encryption")
+                        self.assertFalse(pdf.allow.modify_other)
 
     @unittest.skipUnless(all(shutil.which(t) for t in
                              ("pdfsig", "certutil", "pk12util", "openssl")),

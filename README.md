@@ -9,7 +9,7 @@ the window (F11 hides even that).
 
 Needs only Fedora packages (all present on a default Workstation install):
 
-    sudo dnf install python3-gobject gtk4 libadwaita poppler-glib python3-cairo python3-pikepdf
+    sudo dnf install python3-gobject gtk4 libadwaita poppler-glib python3-cairo python3-pikepdf python3-cryptography
 
 Then:
 
@@ -67,7 +67,12 @@ your changes are appended after it. So if someone sent you a PDF that is
 already digitally signed (DocuSign, Adobe Sign, …), their signature stays
 valid after you add yours; viewers will note that annotations were added
 after signing. Unchanged marks are reused, so saving repeatedly doesn't grow
-the file. Encrypted or damaged PDFs fall back to a full rewrite.
+the file.
+
+Encrypted PDFs (e.g. ones that open without a password but restrict
+editing or copying) stay encrypted with the same restrictions, including
+in flattened copies. Damaged PDFs that can't take an incremental update
+are rewritten in full instead.
 
 Saves are atomic (written to a temp file, then renamed), so a crash
 mid-save won't corrupt your PDF.

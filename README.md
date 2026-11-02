@@ -62,6 +62,13 @@ session.
 into the page content instead. Use that for signed documents you send to
 someone, so the signature can't be stripped or edited as an annotation.
 
+Saves are *incremental*: the file you opened is kept byte-for-byte and
+your changes are appended after it. So if someone sent you a PDF that is
+already digitally signed (DocuSign, Adobe Sign, …), their signature stays
+valid after you add yours; viewers will note that annotations were added
+after signing. Unchanged marks are reused, so saving repeatedly doesn't grow
+the file. Encrypted or damaged PDFs fall back to a full rewrite.
+
 Saves are atomic (written to a temp file, then renamed), so a crash
 mid-save won't corrupt your PDF.
 

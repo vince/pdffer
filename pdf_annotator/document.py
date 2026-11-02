@@ -13,6 +13,7 @@ import io
 import json
 import math
 import os
+import re
 import tempfile
 import uuid
 from dataclasses import dataclass, field
@@ -297,9 +298,11 @@ class LoadError(Exception):
 
 
 class Document:
-    def __init__(self, path, base_bytes, poppler_doc, pages, marks):
+    def __init__(self, path, base_bytes, poppler_doc, pages, marks, original_bytes=None):
         self.path = path
         self.base_bytes = base_bytes  # the PDF without our annotations
+        # the file exactly as loaded; saves append to it (incremental update)
+        self.original_bytes = original_bytes if original_bytes is not None else base_bytes
         self.poppler = poppler_doc
         self.pages = pages
         self.marks = marks
@@ -342,8 +345,12 @@ class Document:
                     continue
                 stripped = True
                 for a in ours:
-                    mark = _mark_from_json(str(a[DATA_KEY]), index, info, a)
+                    text = str(a[DATA_KEY])
+                    mark = _mark_from_json(text, index, info, a)
                     if mark is not None:
+                        if a.is_indirect:
+                            # lets an unchanged mark keep its annotation object
+                            mark._src = (index, a.objgen, text)
                         marks.append(mark)
                 if keep:
                     page.obj.Annots = pikepdf.Array(keep)
@@ -367,7 +374,7 @@ class Document:
         for i, info in enumerate(pages):
             w, h = pdoc.get_page(i).get_size()
             info.width, info.height = w, h
-        doc = cls(path, base, pdoc, pages, marks)
+        doc = cls(path, base, pdoc, pages, marks, original_bytes=data)
         doc.base_gbytes = gbytes  # shared with extra Poppler documents
         return doc
 
@@ -440,13 +447,25 @@ class Document:
     def snapshot(self):
         """Capture everything needed to save, on the main thread.
 
-        Returns (marker, job) where job() builds the PDF bytes and is safe
-        to run in a worker thread.
+        Returns (marker, job) where job(flatten) builds the PDF bytes and is
+        safe to run in a worker thread.
+
+        Normal saves are incremental updates appended to the file as loaded,
+        so existing digital signatures stay valid. Flattened copies, and
+        files that can't take an incremental update, are fully rewritten.
         """
         items = [_ExportItem(copy.deepcopy(m), self.pages[m.page]) for m in self.marks]
-        base = self.base_bytes
+        base, original = self.base_bytes, self.original_bytes
         marker = self._marker()
-        return marker, (lambda flatten: build_pdf(base, items, flatten))
+
+        def job(flatten):
+            if not flatten:
+                try:
+                    return build_incremental(original, items)
+                except NoIncremental:
+                    pass
+            return build_pdf(base, items, flatten)
+        return marker, job
 
 
 def _mark_from_json(text, page_index, info, annot=None):
@@ -503,6 +522,12 @@ class _ExportItem:
         self.mark = mark
         self.page = mark.page
         self.json = _mark_to_json(mark, info)
+        src = getattr(mark, "_src", None)
+        # Unchanged since load: keep the existing annotation object.
+        # (Compare parsed values: a reloaded 2 comes back as 2.0.)
+        self.reuse_objgen = None
+        if src and src[0] == mark.page and json.loads(src[2]) == json.loads(self.json):
+            self.reuse_objgen = src[1]
         x0, y0, x1, y1 = mark.bbox()
         corners = [info.to_user(x, y) for x, y in ((x0, y0), (x1, y0), (x0, y1), (x1, y1))]
         bx0 = min(c[0] for c in corners)
@@ -548,6 +573,39 @@ def _render_appearances(items):
     return buf.getvalue()
 
 
+def _make_annot(pdf, page, it, form, date):
+    m = it.mark
+    x0, y0, x1, y1 = it.rect
+    annot = pikepdf.Dictionary(
+        Type=pikepdf.Name.Annot,
+        Rect=pikepdf.Array([x0, y0, x1, y1]),
+        F=4,  # print
+        NM=pikepdf.String("pdfannot-" + uuid.uuid4().hex),
+        M=pikepdf.String(date),
+        P=page.obj,
+        AP=pikepdf.Dictionary(N=form),
+    )
+    if m.kind != "image":
+        annot.C = pikepdf.Array([round(c, 4) for c in m.color])
+    if m.kind == "image":
+        annot.Subtype = pikepdf.Name.Stamp
+        annot.Name = pikepdf.Name("/Image")
+        annot.Contents = pikepdf.String("Image")
+        annot[IMAGE_KEY] = pdf.make_stream(m.image.data)
+    elif m.kind == "ink":
+        annot.Subtype = pikepdf.Name.Ink
+        annot.InkList = pikepdf.Array([pikepdf.Array(it.inklist)])
+        annot.BS = pikepdf.Dictionary(W=round(m.width, 3))
+    else:
+        annot.Subtype = pikepdf.Name.FreeText
+        annot.Contents = pikepdf.String(m.text)
+        r, g, b = m.color
+        annot.DA = pikepdf.String(f"/Helv {m.size:g} Tf {r:.3f} {g:.3f} {b:.3f} rg")
+        annot.BS = pikepdf.Dictionary(W=0)
+    annot[DATA_KEY] = pikepdf.String(it.json)
+    return annot
+
+
 def build_pdf(base_bytes, items, flatten=False):
     """Return PDF bytes: the base document plus the given marks."""
     pdf = pikepdf.open(io.BytesIO(base_bytes))
@@ -569,35 +627,7 @@ def build_pdf(base_bytes, items, flatten=False):
                     page.contents_add(
                         f"q 1 0 0 1 {x0:.4f} {y0:.4f} cm {name} Do Q\n".encode())
                     continue
-                m = it.mark
-                annot = pikepdf.Dictionary(
-                    Type=pikepdf.Name.Annot,
-                    Rect=pikepdf.Array([x0, y0, x1, y1]),
-                    F=4,  # print
-                    NM=pikepdf.String("pdfannot-" + uuid.uuid4().hex),
-                    M=pikepdf.String(date),
-                    P=page.obj,
-                    AP=pikepdf.Dictionary(N=form),
-                )
-                if m.kind != "image":
-                    annot.C = pikepdf.Array([round(c, 4) for c in m.color])
-                if m.kind == "image":
-                    annot.Subtype = pikepdf.Name.Stamp
-                    annot.Name = pikepdf.Name("/Image")
-                    annot.Contents = pikepdf.String("Image")
-                    annot[IMAGE_KEY] = pdf.make_stream(m.image.data)
-                elif m.kind == "ink":
-                    annot.Subtype = pikepdf.Name.Ink
-                    annot.InkList = pikepdf.Array([pikepdf.Array(it.inklist)])
-                    annot.BS = pikepdf.Dictionary(W=round(m.width, 3))
-                else:
-                    annot.Subtype = pikepdf.Name.FreeText
-                    annot.Contents = pikepdf.String(m.text)
-                    r, g, b = m.color
-                    annot.DA = pikepdf.String(f"/Helv {m.size:g} Tf {r:.3f} {g:.3f} {b:.3f} rg")
-                    annot.BS = pikepdf.Dictionary(W=0)
-                annot[DATA_KEY] = pikepdf.String(it.json)
-                ref = pdf.make_indirect(annot)
+                ref = pdf.make_indirect(_make_annot(pdf, page, it, form, date))
                 if "/Annots" in page.obj and isinstance(page.obj.Annots, pikepdf.Array):
                     page.obj.Annots.append(ref)
                 else:
@@ -605,6 +635,171 @@ def build_pdf(base_bytes, items, flatten=False):
         out = io.BytesIO()
         pdf.save(out)
         return out.getvalue()
+
+
+# ------------------------------------------------------ incremental save
+
+class NoIncremental(Exception):
+    """This file can't take an incremental update; rewrite it instead."""
+
+
+_STARTXREF = re.compile(rb"startxref\s+(\d+)")
+_OBJ_HEADER = re.compile(rb"\s*\d+\s+\d+\s+obj\b")
+_REF = re.compile(rb"(\d+) (\d+) R\b")
+
+
+def _last_xref(data):
+    """('table' | 'stream', offset) of the file's last cross-reference."""
+    i = data.rfind(b"startxref")
+    m = _STARTXREF.match(data, i) if i >= 0 else None
+    if not m:
+        raise NoIncremental("no startxref")
+    off = int(m.group(1))
+    if data.startswith(b"xref", off):
+        return "table", off
+    if _OBJ_HEADER.match(data, off):
+        return "stream", off
+    raise NoIncremental("startxref offset is wrong")
+
+
+def _is_ours(annot):
+    return isinstance(annot, pikepdf.Dictionary) and DATA_KEY in annot
+
+
+def _serialize(obj):
+    """(bytes of an indirect object's body, references it contains)."""
+    if isinstance(obj, pikepdf.Stream):
+        raw = obj.read_raw_bytes()
+        obj.stream_dict.Length = len(raw)
+        head = obj.stream_dict.unparse()
+        return head + b"\nstream\n" + raw + b"\nendstream", _REF.findall(head)
+    if isinstance(obj, pikepdf.Object):
+        body = obj.unparse(resolved=True)
+    elif isinstance(obj, bool):  # pikepdf returns some scalars as Python values
+        body = b"true" if obj else b"false"
+    elif obj is None:
+        body = b"null"
+    else:
+        body = str(obj).encode()
+    return body, _REF.findall(body)
+
+
+def _xref_groups(entries):
+    """Split sorted [((num, gen), offset)] into runs of consecutive numbers."""
+    groups = []
+    for e in entries:
+        if groups and e[0][0] == groups[-1][-1][0][0] + 1:
+            groups[-1].append(e)
+        else:
+            groups.append([e])
+    return groups
+
+
+def build_incremental(original, items):
+    """Return `original` with an incremental update appended that replaces
+    our annotations with `items`. The original bytes are left untouched, so
+    digital signatures over them remain valid.
+
+    Raises NoIncremental when the file needs a full rewrite instead.
+    """
+    style, prev = _last_xref(original)
+    pdf = pikepdf.open(io.BytesIO(original))
+    with pdf:
+        if pdf.is_encrypted:
+            raise NoIncremental("encrypted")
+        orig_size = int(pdf.trailer.get("/Size", 0))
+        # QPDF numbers new objects after the existing ones; find where.
+        first_new = pdf.make_indirect(pikepdf.Dictionary()).objgen[0]
+        if first_new < orig_size:
+            raise NoIncremental("object numbering")
+
+        fresh = [it for it in items if it.reuse_objgen is None]
+        forms = iter([])
+        if fresh:
+            ap_pdf = pikepdf.open(io.BytesIO(_render_appearances(fresh)))
+            forms = iter([pdf.copy_foreign(p.as_form_xobject()) for p in ap_pdf.pages])
+        date = _pdf_date()
+        ours = {}
+        for it in items:
+            if it.reuse_objgen is not None:
+                ref = pdf.get_object(it.reuse_objgen)
+            else:
+                ref = pdf.make_indirect(_make_annot(pdf, pdf.pages[it.page], it, next(forms), date))
+            ours.setdefault(it.page, []).append(ref)
+
+        changed = []
+        for index, page in enumerate(pdf.pages):
+            annots = page.obj.get("/Annots")
+            old = list(annots) if isinstance(annots, pikepdf.Array) else []
+            if index not in ours and not any(_is_ours(a) for a in old):
+                continue
+            new = [a for a in old if not _is_ours(a)] + ours.get(index, [])
+            if all(a.is_indirect for a in old) and \
+                    [a.objgen for a in new] == [a.objgen for a in old]:
+                continue
+            if not page.obj.is_indirect:
+                raise NoIncremental("direct page object")
+            if new:
+                page.obj.Annots = pikepdf.Array(new)
+            else:
+                del page.obj["/Annots"]
+            changed.append(page.obj.objgen)
+        if not changed:
+            return original
+
+        # Write the changed pages plus every new object they reach.
+        out = bytearray(original)
+        if not out.endswith((b"\n", b"\r")):
+            out += b"\n"
+        offsets = {}
+        queue, seen = list(changed), set(changed)
+        while queue:
+            objgen = queue.pop(0)
+            body, refs = _serialize(pdf.get_object(objgen))
+            offsets[objgen] = len(out)
+            out += f"{objgen[0]} {objgen[1]} obj\n".encode() + body + b"\nendobj\n"
+            for num, gen in refs:
+                ref = (int(num), int(gen))
+                if ref[0] >= first_new and ref not in seen:
+                    seen.add(ref)
+                    queue.append(ref)
+        if pdf.get_warnings():
+            raise NoIncremental("damaged file")
+
+        trailer = pdf.trailer
+        root = trailer.Root.objgen
+        info = trailer.get("/Info")
+        ids = trailer.get("/ID")
+        id0 = bytes(ids[0]) if isinstance(ids, pikepdf.Array) and len(ids) == 2 \
+            else os.urandom(16)
+        common = f"/Root {root[0]} {root[1]} R"
+        if info is not None and info.is_indirect:
+            common += f" /Info {info.objgen[0]} {info.objgen[1]} R"
+        common += f" /ID [<{id0.hex()}><{os.urandom(16).hex()}>] /Prev {prev}"
+        size = max(orig_size, max(n for n, _g in offsets) + 1)
+
+        xref_off = len(out)
+        if style == "table":
+            out += b"xref\n"
+            for group in _xref_groups(sorted(offsets.items())):
+                out += f"{group[0][0][0]} {len(group)}\n".encode()
+                for (_num, gen), off in group:
+                    out += f"{off:010d} {gen:05d} n\r\n".encode()
+            out += f"trailer\n<< /Size {size} {common} >>\n".encode()
+        else:
+            # match the original: a cross-reference stream (PDF 1.5+)
+            xref_num = size
+            offsets[(xref_num, 0)] = xref_off
+            entries = sorted(offsets.items())
+            ow = 4 if len(out) < 2 ** 32 else 8
+            rows = b"".join(b"\x01" + off.to_bytes(ow, "big") + gen.to_bytes(2, "big")
+                            for (_n, gen), off in entries)
+            index = " ".join(f"{g[0][0][0]} {len(g)}" for g in _xref_groups(entries))
+            out += (f"{xref_num} 0 obj\n<< /Type /XRef /Size {xref_num + 1} /Index [{index}]"
+                    f" /W [1 {ow} 2] {common} /Length {len(rows)} >>\nstream\n").encode()
+            out += rows + b"\nendstream\nendobj\n"
+        out += f"startxref\n{xref_off}\n%%EOF\n".encode()
+        return bytes(out)
 
 
 def write_atomic(path, data):

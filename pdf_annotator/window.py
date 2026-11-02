@@ -186,6 +186,9 @@ class Window(Adw.ApplicationWindow):
         st.text_size = float(self.prefs["text_size"])
         self._sync_style_widgets()
         self.tools.set_active_name(self.prefs.get("tool", "pen"))
+        # The group starts with its first toggle active, so restoring that
+        # tool emits no notify; sync the canvas explicitly.
+        self.canvas.set_tool(self.tools.get_active_name() or "pen")
         self._update_state()
 
     # ------------------------------------------------------------ actions

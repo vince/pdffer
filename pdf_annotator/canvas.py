@@ -3,7 +3,6 @@
 import bisect
 import math
 import threading
-import time
 from dataclasses import dataclass
 
 import cairo
@@ -976,38 +975,56 @@ class PageCanvas(Gtk.DrawingArea, Gtk.Scrollable):
 
 
 class TextEditor:
-    """An in-place Gtk.TextView floating over the page."""
+    """An in-place text box floating over the page.
+
+    The Gtk.TextView is created once per canvas and only shown and hidden,
+    never destroyed: destroying a just-focused TextView lets GTK's Wayland
+    input-method code use the freed widget when the compositor's reply
+    arrives (SIGSEGV in gtk_im_context_wayland_get_global).
+    """
 
     _css = None
+
+    @staticmethod
+    def _view(canvas):
+        tv = getattr(canvas, "_text_view", None)
+        if tv is None:
+            tv = Gtk.TextView(visible=False)
+            tv.add_css_class("annot-editor")
+            tv.set_halign(Gtk.Align.START)
+            tv.set_valign(Gtk.Align.START)
+            tv.set_accepts_tab(False)
+            tv.set_left_margin(0)
+            tv.set_right_margin(0)
+            tv.set_top_margin(0)
+            tv.set_bottom_margin(0)
+            tv.get_buffer().set_enable_undo(True)
+            tv.get_buffer().connect(
+                "changed", lambda *_: canvas.editor and canvas.editor.update_geometry())
+            key = Gtk.EventControllerKey()
+            key.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
+            key.connect("key-pressed",
+                        lambda _c, kv, code, st: bool(canvas.editor) and
+                        canvas.editor._on_key(_c, kv, code, st))
+            tv.add_controller(key)
+            canvas.overlay.add_overlay(tv)
+            canvas._text_view = tv
+        return tv
 
     def __init__(self, canvas, page, x, y, mark):
         self.canvas = canvas
         self.page, self.x, self.y, self.mark = page, x, y, mark
         self.color = mark.color if mark else canvas.style.color
         self.size = mark.size if mark else canvas.style.text_size
-        tv = Gtk.TextView()
-        tv.add_css_class("annot-editor")
-        tv.set_halign(Gtk.Align.START)
-        tv.set_valign(Gtk.Align.START)
-        tv.set_accepts_tab(False)
-        tv.set_left_margin(0)
-        tv.set_right_margin(0)
-        tv.set_top_margin(0)
-        tv.set_bottom_margin(0)
-        tv.get_buffer().set_text(mark.text if mark else "")
-        tv.get_buffer().set_enable_undo(True)
-        tv.get_buffer().connect("changed", lambda *_: self.update_geometry())
-        key = Gtk.EventControllerKey()
-        key.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
-        key.connect("key-pressed", self._on_key)
-        tv.add_controller(key)
-        self.tv = tv
-        canvas.overlay.add_overlay(tv)
-        self.update_geometry()
-        tv.grab_focus()
+        self.tv = tv = self._view(canvas)
         buf = tv.get_buffer()
+        buf.begin_irreversible_action()  # undo shouldn't go past the start
+        buf.set_text(mark.text if mark else "")
+        buf.end_irreversible_action()
+        self.update_geometry()
+        tv.set_visible(True)
+        tv.grab_focus()
         buf.place_cursor(buf.get_end_iter())
-        self._started = time.monotonic()
 
     @classmethod
     def _provider(cls):
@@ -1068,4 +1085,5 @@ class TextEditor:
             buf.redo()
 
     def destroy(self):
-        self.canvas.overlay.remove_overlay(self.tv)
+        self.canvas.grab_focus()  # focus out first so the input method lets go
+        self.tv.set_visible(False)

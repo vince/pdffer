@@ -1,7 +1,5 @@
 """Sidebar listing page thumbnails (with marks), like macOS Preview."""
 
-import time
-
 import cairo
 import gi
 
@@ -67,7 +65,10 @@ class ThumbnailPanel(Gtk.Box):
         self._renderer = None
         self._request_id = 0
         self._syncing = False
-        self._picked_at = 0.0
+        # Scroll position produced by clicking a thumbnail. While the view is
+        # still there, don't re-sync: near the end of a document the clicked
+        # page can't reach the top, and the highlight would jump back.
+        self._picked_offset = None
 
         self.model = Gtk.StringList()
         self.selection = Gtk.SingleSelection(model=self.model, autoselect=False,
@@ -110,8 +111,12 @@ class ThumbnailPanel(Gtk.Box):
 
     def sync_current(self, index):
         """Follow the page shown in the main view."""
-        if not self.doc or time.monotonic() - self._picked_at < 0.6:
+        if not self.doc:
             return
+        if self._picked_offset is not None:
+            if self.canvas._offset()[1] == self._picked_offset:
+                return
+            self._picked_offset = None
         if self.selection.get_selected() != index:
             self._syncing = True
             self.selection.set_selected(index)
@@ -124,8 +129,8 @@ class ThumbnailPanel(Gtk.Box):
             return
         i = sel.get_selected()
         if i != Gtk.INVALID_LIST_POSITION:
-            self._picked_at = time.monotonic()
             self.canvas.scroll_to_page(i)
+            self._picked_offset = self.canvas._offset()[1]
 
     # ---- list items
 
